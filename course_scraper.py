@@ -12,16 +12,25 @@ ambitos = {
     7: "EXPRESIÓN CORPORAL Y MOTRICIDAD"
 }
 
-def obtener_ambito_usuario():
+def obtener_ambitos_usuario():
     while True:
         try:
-            numero = int(input("Ingrese el número del ámbito que desea seleccionar (1-7): "))
-            if numero in ambitos:
-                return ambitos[numero]
+            entrada = input("Ingrese los números de ámbitos separados por comas (1-7), ejemplo '1,2,3': ")
+            numeros = [int(num.strip()) for num in entrada.split(',')]
+            ambitos_seleccionados = []
+            
+            for num in numeros:
+                if num in ambitos:
+                    ambitos_seleccionados.append(ambitos[num])
+                else:
+                    print(f"Número {num} no válido, ignorando...")
+            
+            if ambitos_seleccionados:
+                return ambitos_seleccionados
             else:
-                print("Número no válido. Por favor, ingrese un número entre 1 y 7.")
+                print("Ningún número válido ingresado. Por favor, ingrese números entre 1 y 7.")
         except ValueError:
-            print("Entrada no válida. Por favor, ingrese un número entre 1 y 7.")
+            print("Entrada no válida. Use números separados por comas (ejemplo: 1,2,3)")
 
 def scrape_academic_data(page, ambito_seleccionado):
     print("Scraping academic data...")
@@ -73,7 +82,7 @@ def scrape_academic_data(page, ambito_seleccionado):
                     row_inputs = row.query_selector_all('input.form-control.text-center.text-uppercase')
                     for input_element in row_inputs:
                         input_element.fill("")
-                        input_element.fill("A+")
+                        input_element.fill("C+")
                     time.sleep(1)
 
                     # Botón de guardar de la fila
@@ -152,10 +161,14 @@ def scrape_academic_data(page, ambito_seleccionado):
         return False
 
 # course_scraper.py
-def obtener_ambito_y_scrapear(page):  # Modificar para aceptar solo page
-    ambito_seleccionado = obtener_ambito_usuario()
-    success = scrape_academic_data(page, ambito_seleccionado)  # Pasar solo page
-    if success:
-        print("Scraping completado exitosamente.")
-    else:
-        print("Error durante el scraping.")
+def obtener_ambito_y_scrapear(page):
+    ambitos_seleccionados = obtener_ambitos_usuario()
+    print(f"Procesando ámbitos: {ambitos_seleccionados}")
+    
+    for ambito in ambitos_seleccionados:
+        print(f"\nProcesando ámbito: {ambito}")
+        success = scrape_academic_data(page, ambito)
+        if success:
+            print(f"Scraping completado exitosamente para {ambito}")
+        else:
+            print(f"Error durante el scraping de {ambito}")
