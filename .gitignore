@@ -1,0 +1,7 @@
+# Ignorar archivos de credenciales
+credenciales.data
+
+# ingonrar __pycache__ directorio
+__pycache__/
+
+nombre_del_entorno
