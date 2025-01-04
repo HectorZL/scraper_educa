@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 import time
 
-# Diccionario que mapea números a ámbitos
+# Diccionarios de mapeo
 ambitos = {
     1: "IDENTIDAD Y AUTONOMÍA",
     2: "CONVIVENCIA",
@@ -11,6 +11,31 @@ ambitos = {
     6: "EXPRESIÓN ARTÍSTICA",
     7: "EXPRESIÓN CORPORAL Y MOTRICIDAD"
 }
+
+trimestres = {
+    1: ("TRIMESTRE 1", "C+"),
+    2: ("TRIMESTRE 2", "B+"),
+    3: ("TRIMESTRE 3", "A+")
+}
+
+def obtener_trimestres_usuario():
+    while True:
+        try:
+            entrada = input("Ingrese los números de trimestres separados por comas (1-3), ejemplo '1,2': ")
+            numeros = [int(num.strip()) for num in entrada.split(',')]
+            trimestres_seleccionados = []
+            
+            for num in numeros:
+                if num in trimestres:
+                    trimestres_seleccionados.append(num)
+                else:
+                    print(f"Trimestre {num} no válido, ignorando...")
+            
+            if trimestres_seleccionados:
+                return trimestres_seleccionados
+            print("Ningún trimestre válido ingresado. Por favor, ingrese números entre 1 y 3.")
+        except ValueError:
+            print("Entrada no válida. Use números separados por comas (ejemplo: 1,2)")
 
 def obtener_ambitos_usuario():
     while True:
@@ -27,29 +52,98 @@ def obtener_ambitos_usuario():
             
             if ambitos_seleccionados:
                 return ambitos_seleccionados
-            else:
-                print("Ningún número válido ingresado. Por favor, ingrese números entre 1 y 7.")
+            print("Ningún número válido ingresado. Por favor, ingrese números entre 1 y 7.")
         except ValueError:
             print("Entrada no válida. Use números separados por comas (ejemplo: 1,2,3)")
 
-def scrape_academic_data(page, ambito_seleccionado):
-    print("Scraping academic data...")
+def seleccionar_trimestre(page, trimestre_num):
     try:
-        base_url = "https://academico.educarecuador.gob.ec/academico-servicios/pages/calificacion_ordinaria"
-        page.goto(base_url, wait_until="domcontentloaded")
+        print(f"Intentando seleccionar trimestre {trimestre_num}...")
+        
+        # Verificar que estamos en la página correcta
+        if "calificacion_ordinaria" not in page.url:
+            print("No estamos en la página correcta de calificaciones")
+            return False
 
-        # Ajustar viewport y pequeñas esperas de sincronización
-        page.set_viewport_size({"width": 1920, "height": 1080})
+        # Esperar por el contenedor de trimestres
+        tabs_container = page.wait_for_selector('.mat-tab-labels', 
+                                              state="visible", 
+                                              timeout=10000)
+        if not tabs_container:
+            print("No se pudo encontrar el contenedor de trimestres")
+            return False
+
+        # Nuevo selector basado en el contenido del texto
+        selector = f'.mat-tab-label-content:has-text("TRIMESTRE {trimestre_num}")'
+        
+        # Esperar y verificar el tab específico
+        tab = page.wait_for_selector(selector, state="visible", timeout=10000)
+        if not tab:
+            print(f"No se encontró el tab para el trimestre {trimestre_num}")
+            return False
+
+        # Scroll al elemento
+        page.evaluate("""(tab) => {
+            tab.scrollIntoView({behavior: 'smooth', block: 'center'});
+            window.scrollBy(0, -100);
+        }""", tab)
         time.sleep(1)
 
-        # Seleccionar ámbito
-        page.wait_for_selector('mat-icon.material-icons:has-text("label_important")',
-                               state="visible",
-                               timeout=20000)
-        page.click('mat-icon.material-icons:has-text("label_important")')
+        # Click en el tab
+        tab.click()
         time.sleep(2)
-        page.select_option('select[name="codigoAmbito"]', label=ambito_seleccionado)
+
+        # Verificar selección
+        parent_tab = page.query_selector(f'.mat-tab-label:has-text("TRIMESTRE {trimestre_num}")')
+        if parent_tab and 'mat-tab-label-active' in parent_tab.get_attribute('class'):
+            print(f"Trimestre {trimestre_num} seleccionado correctamente")
+            return True
+        
+        return False
+
+    except Exception as e:
+        print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
+        return False
+
+def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
+    print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")
+    try:
+        base_url = "https://academico.educarecuador.gob.ec/academico-servicios/pages/calificacion_ordinaria"
+        
+        # Navegar a la página
+        page.goto(base_url, wait_until="networkidle", timeout=30000)
+        page.wait_for_load_state("networkidle")
         time.sleep(2)
+
+        # NUEVO: Primer clic en el ícono label_important para abrir el panel
+        print("Abriendo panel de selección...")
+        label_icon = page.wait_for_selector('mat-icon.material-icons:has-text("label_important")',
+                                          state="visible",
+                                          timeout=20000)
+        if not label_icon:
+            print("No se encontró el ícono de selección")
+            return False
+            
+        # Hacer clic en el ícono
+        label_icon.click()
+        time.sleep(2)
+
+        # Ahora sí procedemos con la selección de trimestre
+        if not seleccionar_trimestre(page, trimestre_num):
+            print("No se pudo seleccionar el trimestre")
+            return False
+
+        # Continuar con la selección del ámbito
+        try:
+            print("Seleccionando ámbito...")
+            page.select_option('select[name="codigoAmbito"]', label=ambito_seleccionado)
+            time.sleep(2)
+        except Exception as e:
+            print(f"Error al seleccionar ámbito: {e}")
+            return False
+
+        # Verificar que la tabla se ha cargado
+        page.wait_for_selector('table tbody tr', state="visible", timeout=10000)
 
         # Bucle de paginación
         while True:
@@ -72,7 +166,7 @@ def scrape_academic_data(page, ambito_seleccionado):
                     rows = page.query_selector_all('table tbody tr')
                     total_filas = len(rows)
 
-                    if fila_idx >= total_filas:
+                    if (fila_idx >= total_filas):
                         break  # Si la tabla cambió radicalmente, evitamos error
 
                     row = rows[fila_idx]
@@ -82,7 +176,7 @@ def scrape_academic_data(page, ambito_seleccionado):
                     row_inputs = row.query_selector_all('input.form-control.text-center.text-uppercase')
                     for input_element in row_inputs:
                         input_element.fill("")
-                        input_element.fill("C+")
+                        input_element.fill(trimestres[trimestre_num][1])  # Usa la nota correspondiente al trimestre
                     time.sleep(1)
 
                     # Botón de guardar de la fila
@@ -162,13 +256,20 @@ def scrape_academic_data(page, ambito_seleccionado):
 
 # course_scraper.py
 def obtener_ambito_y_scrapear(page):
-    ambitos_seleccionados = obtener_ambitos_usuario()
-    print(f"Procesando ámbitos: {ambitos_seleccionados}")
+    # Primero seleccionar trimestres
+    trimestres_seleccionados = obtener_trimestres_usuario()
+    print(f"Trimestres seleccionados: {trimestres_seleccionados}")
     
-    for ambito in ambitos_seleccionados:
-        print(f"\nProcesando ámbito: {ambito}")
-        success = scrape_academic_data(page, ambito)
-        if success:
-            print(f"Scraping completado exitosamente para {ambito}")
-        else:
-            print(f"Error durante el scraping de {ambito}")
+    # Luego seleccionar ámbitos
+    ambitos_seleccionados = obtener_ambitos_usuario()
+    print(f"Ámbitos seleccionados: {ambitos_seleccionados}")
+    
+    # Procesar cada combinación de trimestre y ámbito
+    for trimestre in trimestres_seleccionados:
+        for ambito in ambitos_seleccionados:
+            print(f"\nProcesando Trimestre {trimestre} - {ambito}")
+            success = scrape_academic_data(page, ambito, trimestre)
+            if success:
+                print(f"Completado: Trimestre {trimestre} - {ambito}")
+            else:
+                print(f"Error en: Trimestre {trimestre} - {ambito}")
