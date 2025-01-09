@@ -59,51 +59,35 @@ def obtener_ambitos_usuario():
 def seleccionar_trimestre(page, trimestre_num):
     try:
         print(f"Intentando seleccionar trimestre {trimestre_num}...")
-        
-        # Verificar que estamos en la página correcta
-        if "calificacion_ordinaria" not in page.url:
-            print("No estamos en la página correcta de calificaciones")
-            return False
 
-        # Esperar por el contenedor de trimestres
-        tabs_container = page.wait_for_selector('.mat-tab-labels', 
-                                              state="visible", 
-                                              timeout=10000)
-        if not tabs_container:
-            print("No se pudo encontrar el contenedor de trimestres")
-            return False
+        label_icon = page.wait_for_selector('mat-icon.material-icons:has-text("label_important")', state="visible", timeout=20000)
+        if label_icon:
+            label_icon.click()
+            time.sleep(1)
 
-        # Nuevo selector basado en el contenido del texto
-        selector = f'.mat-tab-label-content:has-text("TRIMESTRE {trimestre_num}")'
-        
-        # Esperar y verificar el tab específico
+        selector = f'div[role="tab"][aria-posinset="{trimestre_num}"]'
         tab = page.wait_for_selector(selector, state="visible", timeout=10000)
         if not tab:
             print(f"No se encontró el tab para el trimestre {trimestre_num}")
             return False
 
-        # Scroll al elemento
-        page.evaluate("""(tab) => {
-            tab.scrollIntoView({behavior: 'smooth', block: 'center'});
-            window.scrollBy(0, -100);
-        }""", tab)
+        page.evaluate("""(tab) => { tab.scrollIntoView({behavior: 'smooth', block: 'center'}); }""", tab)
         time.sleep(1)
-
-        # Click en el tab
         tab.click()
         time.sleep(2)
 
-        # Verificar selección
-        parent_tab = page.query_selector(f'.mat-tab-label:has-text("TRIMESTRE {trimestre_num}")')
+        parent_tab = page.query_selector(selector)
         if parent_tab and 'mat-tab-label-active' in parent_tab.get_attribute('class'):
             print(f"Trimestre {trimestre_num} seleccionado correctamente")
             return True
-        
+
+        print(f"El trimestre {trimestre_num} no se activó.")
         return False
 
     except Exception as e:
         print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
         return False
+
 
 def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
     print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")

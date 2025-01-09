@@ -14,54 +14,26 @@ def normalize_text(text):
     text = ''.join(ch for ch in unicodedata.normalize('NFD', text) if unicodedata.category(ch) != 'Mn')
     text = re.sub(r'\s+', ' ', text)
     return text
+
 def seleccionar_trimestre(page, trimestre_num):
     try:
         print(f"Intentando seleccionar trimestre {trimestre_num}...")
-        
-        # Verificar que estamos en la página correcta
-        if "calificacion_ordinaria" not in page.url:
-            print("No estamos en la página correcta de calificaciones")
-            return False
 
-        # Esperar por el contenedor de trimestres
-        tabs_container = page.wait_for_selector('.mat-tab-labels', 
-                                              state="visible", 
-                                              timeout=10000)
-        if not tabs_container:
-            print("No se pudo encontrar el contenedor de trimestres")
-            return False
+        # Selector flexible para encontrar el trimestre
+        selector = f'.mat-tab-label-content:text-matches(".*TRIMESTRE {trimestre_num}.*", "i")'
+        tab = page.query_selector(selector)
 
-        # Nuevo selector basado en el contenido del texto
-        selector = f'.mat-tab-label-content:has-text("TRIMESTRE {trimestre_num}")'
-        
-        # Esperar y verificar el tab específico
-        tab = page.wait_for_selector(selector, state="visible", timeout=10000)
-        if not tab:
-            print(f"No se encontró el tab para el trimestre {trimestre_num}")
-            return False
-
-        # Scroll al elemento
-        page.evaluate("""(tab) => {
-            tab.scrollIntoView({behavior: 'smooth', block: 'center'});
-            window.scrollBy(0, -100);
-        }""", tab)
-        time.sleep(1)
-
-        # Click en el tab
-        tab.click()
-        time.sleep(2)
-
-        # Verificar selección
-        parent_tab = page.query_selector(f'.mat-tab-label:has-text("TRIMESTRE {trimestre_num}")')
-        if parent_tab and 'mat-tab-label-active' in parent_tab.get_attribute('class'):
+        # Intentar hacer scroll y clic en el tab
+        if tab:
+            page.evaluate("""(tab) => { tab.scrollIntoView({behavior: 'smooth', block: 'center'}); }""", tab)
+            time.sleep(1)
+            tab.click()
             print(f"Trimestre {trimestre_num} seleccionado correctamente")
-            return True
-        
-        return False
-
+        else:
+            print(f"No se encontró el tab para el trimestre {trimestre_num}")
     except Exception as e:
         print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
-        return False
+
 
 def seleccionar_materia(page, nombre, jornada, timeout=20000):
     try:
@@ -221,25 +193,31 @@ def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
 
 
 def obtener_ambito_y_scrapear(page):
-    
-    
     # Obtener materia seleccionada por el usuario
     materia = obtener_materia_usuario()
     if not seleccionar_materia(page, materia['nombre'], materia['jornada']):
         print(f"No se pudo seleccionar la materia {materia['nombre']}")
         return False
 
+    # Obtener ámbitos seleccionados por el usuario
     ambitos = obtener_ambitos_usuario(materia)
     print(f"Ámbitos seleccionados para {materia['nombre']}: {ambitos}")
 
+    # Obtener trimestres seleccionados por el usuario
     trimestres_seleccionados = obtener_trimestres_usuario()
     print(f"Trimestres seleccionados: {trimestres_seleccionados}")
 
+    # Iterar por cada trimestre y ámbito
     for trimestre_num in trimestres_seleccionados:
+        print(f"\nSeleccionando Trimestre {trimestre_num}...")
+        seleccionar_trimestre(page, trimestre_num)
+
         for ambito in ambitos:
-            print(f"\nProcesando Trimestre {trimestre_num} - {ambito}")
+            print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
             if scrape_academic_data(page, ambito, trimestre_num):
                 print(f"Datos de {ambito} para el Trimestre {trimestre_num} procesados exitosamente.")
             else:
                 print(f"Error al procesar {ambito} para el Trimestre {trimestre_num}.")
+
+    print("Proceso de scraping finalizado.")
     return True
