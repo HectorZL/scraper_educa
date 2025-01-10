@@ -74,14 +74,25 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
                             icon.click()
                             return True
 
-            next_button = page.query_selector('li.page-item:not(.disabled) a.page-link:has-text("Siguiente")')
+            next_button = page.query_selector('li.page-item a.page-link:has-text("Siguiente")')
             if next_button:
-                next_button.click()
-                pagina_actual += 1
-                page.wait_for_load_state('networkidle')
+                parent = next_button.evaluate_handle("el => el.parentElement")
+                parent_class = parent.get_attribute("class")
+                if "disabled" not in parent_class:
+                    print("Avanzando a la siguiente página...")
+                    next_button.click()
+                    pagina_actual += 1
+                    time.sleep(2)
+                    page.wait_for_load_state('networkidle')
+                else:
+                    print("El botón 'Siguiente' está deshabilitado.")
+                    break
             else:
                 print("No hay más páginas disponibles.")
                 break
+
+
+            
 
         print(f"No se encontró la materia '{nombre}' con la jornada '{jornada}'.")
         return False
