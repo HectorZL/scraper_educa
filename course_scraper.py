@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import time
 import unicodedata
 import re
-from academic_data import trimestres
+from academic_data import trimestres, trimestres_borrar, trimestres_excepciones
 from ambitos import obtener_ambitos_usuario
 from trimesters import obtener_trimestres_usuario
 from utils import obtener_materia_usuario
@@ -94,7 +94,7 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
         print(f"Error al seleccionar la materia '{nombre}': {e}")
         return False
 
-def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None):
+def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, accion="llenar"):
     print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")
     try:
         print("Seleccionando ámbito...")
@@ -143,9 +143,12 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                     nombre_estudiante = normalize_text(nombre_estudiante_element.inner_text())
 
                     if nombres_excepciones:
-                        if not any(normalize_text(nombre) == nombre_estudiante for nombre in nombres_excepciones):
-                            print(f"Saltando {nombre_estudiante}, no está en la lista de excepciones.")
-                            continue
+                        if nombre_estudiante in [normalize_text(nombre) for nombre in nombres_excepciones]:
+                            nota = trimestres_excepciones[trimestre_num][1]
+                        else:
+                            nota = trimestres_borrar[trimestre_num][1] if accion == "borrar" else trimestres[trimestre_num][1]
+                    else:
+                        nota = trimestres_borrar[trimestre_num][1] if accion == "borrar" else trimestres[trimestre_num][1]
 
                     print(f"Procesando datos para {nombre_estudiante}...")
                     row_inputs = row.query_selector_all('input.form-control.text-center.text-uppercase')
@@ -155,8 +158,8 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                             continue
 
                         input_element.fill("")
-                        input_element.fill(trimestres[trimestre_num][1])
-                        print(f"  - Campo {idx + 1} rellenado con nota: {trimestres[trimestre_num][1]}")
+                        input_element.fill(nota)
+                        print(f"  - Campo {idx + 1} rellenado con nota: {nota}")
                     time.sleep(1)
 
                     save_button = row.query_selector('button.btn.btn-icon.btn-outline-primary')
@@ -179,7 +182,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                         time.sleep(1)
 
                         ok_button = page.wait_for_selector(
-                            'button.swal2-confirm.swal2-styled:has-text("OK")', state="visible", timeout=5000)
+                            'button.swal2-confirm.swal2-styled:has-text(\"OK\")', state="visible", timeout=5000)
                         ok_button.click()
                         print(f"  - Confirmación de guardado OK para {nombre_estudiante}")
                         time.sleep(1)
@@ -203,11 +206,11 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
         print(f"Error durante el scraping: {str(e)}")
         return False
 
-def procesar_todos_los_estudiantes(page, ambito_seleccionado, trimestre_num):
-    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None)
+def procesar_todos_los_estudiantes(page, ambito_seleccionado, trimestre_num, accion="llenar"):
+    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, accion=accion)
 
-def procesar_estudiantes_excepciones(page, ambito_seleccionado, trimestre_num, nombres_excepciones):
-    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=nombres_excepciones)
+def procesar_estudiantes_excepciones(page, ambito_seleccionado, trimestre_num, nombres_excepciones, accion="llenar"):
+    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=nombres_excepciones, accion=accion)
 
 def obtener_ambito_y_scrapear(page):
     materia = obtener_materia_usuario()
@@ -228,7 +231,8 @@ def obtener_ambito_y_scrapear(page):
     ]
 
     opcion = input("¿Desea procesar todos los estudiantes o solo las excepciones? (todos/excepciones): ").strip().lower()
-
+    accion = input("¿Qué acción desea realizar? (llenar/borrar): ").strip().lower()
+    
     for trimestre_num in trimestres_seleccionados:
         print(f"\nSeleccionando Trimestre {trimestre_num}...")
         seleccionar_trimestre(page, trimestre_num)
@@ -236,9 +240,9 @@ def obtener_ambito_y_scrapear(page):
         for ambito in ambitos:
             print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
             if opcion == "todos":
-                procesar_todos_los_estudiantes(page, ambito, trimestre_num)
+                procesar_todos_los_estudiantes(page, ambito, trimestre_num,accion=accion)
             elif opcion == "excepciones":
-                procesar_estudiantes_excepciones(page, ambito, trimestre_num, nombres_excepciones)
+                procesar_estudiantes_excepciones(page, ambito, trimestre_num, nombres_excepciones,accion=accion)
             else:
                 print("Opción no válida. Finalizando...")
                 return False

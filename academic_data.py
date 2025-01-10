@@ -4,7 +4,7 @@
 materias = [
     {
         "nombre": "EDUCACIÓN FÍSICA",
-        "jornada": "MATUTINA",
+        "jornada": "VESPERTINA",
         "ambitos": [
             "PRÁCTICAS LÚDICAS: LOS JUEGOS Y EL JUGAR",
             "PRÁCTICAS GIMNÁSTICAS",
