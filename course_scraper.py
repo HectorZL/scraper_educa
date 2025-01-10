@@ -8,7 +8,6 @@ from ambitos import obtener_ambitos_usuario
 from trimesters import obtener_trimestres_usuario
 from utils import obtener_materia_usuario
 
-
 def normalize_text(text):
     text = text.strip().lower()
     text = ''.join(ch for ch in unicodedata.normalize('NFD', text) if unicodedata.category(ch) != 'Mn')
@@ -41,8 +40,6 @@ def seleccionar_trimestre(page, trimestre_num):
     except Exception as e:
         print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
         return False
-
-
 
 def seleccionar_materia(page, nombre, jornada, timeout=20000):
     try:
@@ -91,20 +88,16 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
                 print("No hay más páginas disponibles.")
                 break
 
-
-            
-
         print(f"No se encontró la materia '{nombre}' con la jornada '{jornada}'.")
         return False
     except Exception as e:
         print(f"Error al seleccionar la materia '{nombre}': {e}")
         return False
 
-def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
+def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None):
     print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")
     try:
         print("Seleccionando ámbito...")
-        #page.wait_for_selector('select[name="codigoAmbito"]', state="visible", timeout=10000)
 
         options = page.query_selector_all('select[name="codigoAmbito"] option')
         value_to_select = None
@@ -120,7 +113,6 @@ def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
             print(f"No se encontró el ámbito '{ambito_seleccionado}'.")
             return False
 
-        # Volver a la primera página antes de procesar filas
         print("Volviendo a la primera página...")
         while True:
             prev_button = page.query_selector('button.mat-paginator-navigation-previous')
@@ -128,7 +120,6 @@ def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
                 prev_button.click()
                 time.sleep(1)
             else:
-                print("Ya estamos en la primera página.")
                 break
 
         page.wait_for_selector('table tbody tr', state="visible", timeout=10000)
@@ -136,72 +127,73 @@ def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
         time.sleep(1)
 
         while True:
-            # Reobtención de filas en cada iteración
             rows = page.query_selector_all('table tbody tr')
             total_filas = len(rows)
             print(f"Encontradas {total_filas} filas en esta página.")
 
-            fila_idx = 0
-            while fila_idx < total_filas:
+            for row_idx in range(len(rows)):
                 try:
-                    # Reobtener filas después de cada interacción
                     rows = page.query_selector_all('table tbody tr')
-                    total_filas = len(rows)
+                    row = rows[row_idx]
 
-                    if fila_idx >= total_filas:
-                        break
+                    nombre_estudiante_element = row.query_selector('td.th-fixed')
+                    if not nombre_estudiante_element:
+                        continue
 
-                    row = rows[fila_idx]
-                    print(f"  Procesando fila {fila_idx + 1} de {total_filas}")
+                    nombre_estudiante = normalize_text(nombre_estudiante_element.inner_text())
 
+                    if nombres_excepciones:
+                        if not any(normalize_text(nombre) == nombre_estudiante for nombre in nombres_excepciones):
+                            print(f"Saltando {nombre_estudiante}, no está en la lista de excepciones.")
+                            continue
+
+                    print(f"Procesando datos para {nombre_estudiante}...")
                     row_inputs = row.query_selector_all('input.form-control.text-center.text-uppercase')
-                    for input_element in row_inputs:
+                    for idx, input_element in enumerate(row_inputs):
+                        if not input_element:
+                            print(f"  - Campo {idx + 1} no encontrado, saltando.")
+                            continue
+
                         input_element.fill("")
                         input_element.fill(trimestres[trimestre_num][1])
+                        print(f"  - Campo {idx + 1} rellenado con nota: {trimestres[trimestre_num][1]}")
                     time.sleep(1)
 
                     save_button = row.query_selector('button.btn.btn-icon.btn-outline-primary')
-                    if not save_button:
-                        print(f"  Fila {fila_idx + 1} sin botón de guardar, saltando...")
-                        fila_idx += 1
-                        continue
+                    if save_button:
+                        page.evaluate(
+                            """(btn) => {
+                                btn.scrollIntoView({behavior: 'smooth', block: 'center'});
+                                window.scrollBy(0, -100);
+                            }""",
+                            save_button
+                        )
+                        time.sleep(1)
+                        save_button.click()
+                        time.sleep(1)
 
-                    page.evaluate(
-                        """(btn) => {
-                            btn.scrollIntoView({behavior: 'smooth', block: 'center'});
-                            window.scrollBy(0, -100);
-                        }""",
-                        save_button
-                    )
-                    time.sleep(1)
-                    save_button.click()
-                    time.sleep(1)
+                        guardar_button = page.wait_for_selector(
+                            'button.swal2-confirm.swal2-styled', state="visible", timeout=5000)
+                        guardar_button.click()
+                        print(f"  - Cambios guardados para {nombre_estudiante}")
+                        time.sleep(1)
 
-                    guardar_button = page.wait_for_selector('button.swal2-confirm.swal2-styled', state="visible", timeout=5000)
-                    guardar_button.click()
-                    print(f"    Fila {fila_idx + 1}: Confirmación guardada")
-                    time.sleep(1)
-
-                    ok_button = page.wait_for_selector('button.swal2-confirm.swal2-styled:has-text("OK")', state="visible", timeout=5000)
-                    ok_button.click()
-                    print(f"    Fila {fila_idx + 1}: OK confirmado")
-                    time.sleep(1)
-
+                        ok_button = page.wait_for_selector(
+                            'button.swal2-confirm.swal2-styled:has-text("OK")', state="visible", timeout=5000)
+                        ok_button.click()
+                        print(f"  - Confirmación de guardado OK para {nombre_estudiante}")
+                        time.sleep(1)
+                    else:
+                        print(f"No se encontró el botón de guardar para {nombre_estudiante}")
                 except Exception as e:
-                    print(f"Error en fila {fila_idx + 1}: {e}")
-
-                # Incrementar índice manualmente
-                fila_idx += 1
+                    print(f"Error al procesar una fila: {e}")
 
             next_button = page.query_selector('button.mat-paginator-navigation-next')
             if next_button and next_button.is_enabled():
-                print("Avanzando a la siguiente página...")
                 next_button.click()
                 time.sleep(3)
                 page.evaluate("""() => { window.scrollTo(0, 0); }""")
-                time.sleep(1)
             else:
-                print("No hay más páginas disponibles.")
                 break
 
         print("Datos académicos actualizados correctamente.")
@@ -211,33 +203,45 @@ def scrape_academic_data(page, ambito_seleccionado, trimestre_num):
         print(f"Error durante el scraping: {str(e)}")
         return False
 
+def procesar_todos_los_estudiantes(page, ambito_seleccionado, trimestre_num):
+    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None)
+
+def procesar_estudiantes_excepciones(page, ambito_seleccionado, trimestre_num, nombres_excepciones):
+    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=nombres_excepciones)
 
 def obtener_ambito_y_scrapear(page):
-    # Obtener materia seleccionada por el usuario
     materia = obtener_materia_usuario()
     if not seleccionar_materia(page, materia['nombre'], materia['jornada']):
         print(f"No se pudo seleccionar la materia {materia['nombre']}")
         return False
 
-    # Obtener ámbitos seleccionados por el usuario
     ambitos = obtener_ambitos_usuario(materia)
     print(f"Ámbitos seleccionados para {materia['nombre']}: {ambitos}")
 
-    # Obtener trimestres seleccionados por el usuario
     trimestres_seleccionados = obtener_trimestres_usuario()
     print(f"Trimestres seleccionados: {trimestres_seleccionados}")
 
-    # Iterar por cada trimestre y ámbito
+    nombres_excepciones = [
+        "FONSECA YUGCHA SHIFER MARIOLY",
+        "MERA LOOR EILEEN MARIED",
+        "VERDUGA RODRIGUEZ EMILIO ALEJANDRO"
+    ]
+
+    opcion = input("¿Desea procesar todos los estudiantes o solo las excepciones? (todos/excepciones): ").strip().lower()
+
     for trimestre_num in trimestres_seleccionados:
         print(f"\nSeleccionando Trimestre {trimestre_num}...")
         seleccionar_trimestre(page, trimestre_num)
 
         for ambito in ambitos:
             print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
-            if scrape_academic_data(page, ambito, trimestre_num):
-                print(f"Datos de {ambito} para el Trimestre {trimestre_num} procesados exitosamente.")
+            if opcion == "todos":
+                procesar_todos_los_estudiantes(page, ambito, trimestre_num)
+            elif opcion == "excepciones":
+                procesar_estudiantes_excepciones(page, ambito, trimestre_num, nombres_excepciones)
             else:
-                print(f"Error al procesar {ambito} para el Trimestre {trimestre_num}.")
+                print("Opción no válida. Finalizando...")
+                return False
 
     print("Proceso de scraping finalizado.")
     return True

@@ -37,8 +37,20 @@ materias = [
     }
 ]
 
+
+trimestres_borrar = {
+    1: ("TRIMESTRE 1", "NE"),
+    2: ("TRIMESTRE 2", "NE"),
+    3: ("TRIMESTRE 3", "NE")
+}
 trimestres = {
     1: ("TRIMESTRE 1", "B+"),
     2: ("TRIMESTRE 2", "A-"),
+    3: ("TRIMESTRE 3", "A+")
+}
+
+trimestres_excepciones = {
+    1: ("TRIMESTRE 1", "A-"),
+    2: ("TRIMESTRE 2", "A+"),
     3: ("TRIMESTRE 3", "A+")
 }
