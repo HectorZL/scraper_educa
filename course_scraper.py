@@ -19,20 +19,29 @@ def seleccionar_trimestre(page, trimestre_num):
     try:
         print(f"Intentando seleccionar trimestre {trimestre_num}...")
 
-        # Selector flexible para encontrar el trimestre
-        selector = f'.mat-tab-label-content:text-matches(".*TRIMESTRE {trimestre_num}.*", "i")'
-        tab = page.query_selector(selector)
-
-        # Intentar hacer scroll y clic en el tab
-        if tab:
-            page.evaluate("""(tab) => { tab.scrollIntoView({behavior: 'smooth', block: 'center'}); }""", tab)
-            time.sleep(1)
-            tab.click()
-            print(f"Trimestre {trimestre_num} seleccionado correctamente")
-        else:
+        selector = f'div[role="tab"][aria-posinset="{trimestre_num}"]'
+        tab = page.wait_for_selector(selector, state="visible", timeout=10000)
+        if not tab:
             print(f"No se encontró el tab para el trimestre {trimestre_num}")
+            return False
+
+        page.evaluate("""(tab) => { tab.scrollIntoView({behavior: 'smooth', block: 'center'}); }""", tab)
+        time.sleep(1)
+        tab.click()
+        time.sleep(2)
+
+        parent_tab = page.query_selector(selector)
+        if parent_tab and 'mat-tab-label-active' in parent_tab.get_attribute('class'):
+            print(f"Trimestre {trimestre_num} seleccionado correctamente")
+            return True
+
+        print(f"El trimestre {trimestre_num} no se activó.")
+        return False
+
     except Exception as e:
         print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
+        return False
+
 
 
 def seleccionar_materia(page, nombre, jornada, timeout=20000):
