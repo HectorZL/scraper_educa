@@ -17,7 +17,7 @@ materias = [
         "nombre": "EDUCACIÓN CULTURAL Y ARTÍSTICA",
         "jornada": "MATUTINA",
         "ambitos": [
-            "EL YO, LA IDENTIDAD",
+            "EL YO: LA IDENTIDAD",
             "EL ENCUENTRO CON OTROS: LA ALTERIDAD",
             "EL ENTORNO: ESPACIO, TIEMPO Y OBJETOS"
         ]
