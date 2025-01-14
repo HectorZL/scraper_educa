@@ -1,7 +1,14 @@
-# Ignorar archivos de credenciales
+# Ignorar todos los archivos que empiecen con "credenciales_"
+credenciales_*
+
+# No ignorar el archivo "credenciales_example.data"
+!credenciales_example.data
+
+# Ignorar archivo específico "credenciales.data"
 credenciales.data
 
-# ingonrar __pycache__ directorio
+# Ignorar __pycache__ directorio
 __pycache__/
 
+# Ignorar nombre de entorno de Python
 nombre_del_entorno
