@@ -1,10 +1,7 @@
-
-# Datos de materias y trimestres
-
 materias = [
     {
         "nombre": "EDUCACIÓN FÍSICA",
-        "jornada": "VESPERTINA",
+        "jornada": "MATUTINA",
         "ambitos": [
             "PRÁCTICAS LÚDICAS: LOS JUEGOS Y EL JUGAR",
             "PRÁCTICAS GIMNÁSTICAS",
@@ -49,8 +46,14 @@ trimestres = {
     3: ("TRIMESTRE 3", "A+")
 }
 
-trimestres_excepciones = {
+trimestres_buenos_estudiantes = {
     1: ("TRIMESTRE 1", "A-"),
     2: ("TRIMESTRE 2", "A+"),
     3: ("TRIMESTRE 3", "A+")
+}
+
+trimestres_malos_estudiantes = {
+    1: ("TRIMESTRE 1", "B-"),
+    2: ("TRIMESTRE 2", "B+"),
+    3: ("TRIMESTRE 3", "A-")
 }

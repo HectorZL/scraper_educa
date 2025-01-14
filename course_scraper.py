@@ -3,7 +3,12 @@ from bs4 import BeautifulSoup
 import time
 import unicodedata
 import re
-from academic_data import trimestres, trimestres_borrar, trimestres_excepciones
+from academic_data import (
+    trimestres,
+    trimestres_borrar,
+    trimestres_buenos_estudiantes,
+    trimestres_malos_estudiantes
+)
 from ambitos import obtener_ambitos_usuario
 from trimesters import obtener_trimestres_usuario
 from utils import obtener_materia_usuario
@@ -94,7 +99,7 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
         print(f"Error al seleccionar la materia '{nombre}': {e}")
         return False
 
-def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, accion="llenar"):
+def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, nombres_buenos=None, nombres_malos=None, accion="llenar"):
     print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")
     try:
         print("Seleccionando ámbito...")
@@ -142,11 +147,16 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
 
                     nombre_estudiante = normalize_text(nombre_estudiante_element.inner_text())
 
-                    if nombres_excepciones:
-                        if nombre_estudiante in [normalize_text(nombre) for nombre in nombres_excepciones]:
-                            nota = trimestres_excepciones[trimestre_num][1]
-                        else:
-                            nota = trimestres_borrar[trimestre_num][1] if accion == "borrar" else trimestres[trimestre_num][1]
+                    # Determinar la nota basada en los grupos de estudiantes
+                    if nombres_buenos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_buenos]:
+                        nota = trimestres_buenos_estudiantes[trimestre_num][1]
+                        print(f"{nombre_estudiante} identificado como 'bueno'. Nota: {nota}")
+                    elif nombres_malos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_malos]:
+                        nota = trimestres_malos_estudiantes[trimestre_num][1]
+                        print(f"{nombre_estudiante} identificado como 'malo'. Nota: {nota}")
+                    elif nombres_excepciones and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_excepciones]:
+                        nota = trimestres_excepciones[trimestre_num][1]
+                        print(f"{nombre_estudiante} identificado como 'excepción'. Nota: {nota}")
                     else:
                         nota = trimestres_borrar[trimestre_num][1] if accion == "borrar" else trimestres[trimestre_num][1]
 
@@ -206,6 +216,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
         print(f"Error durante el scraping: {str(e)}")
         return False
 
+
 def procesar_todos_los_estudiantes(page, ambito_seleccionado, trimestre_num, accion="llenar"):
     return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, accion=accion)
 
@@ -224,15 +235,26 @@ def obtener_ambito_y_scrapear(page):
     trimestres_seleccionados = obtener_trimestres_usuario()
     print(f"Trimestres seleccionados: {trimestres_seleccionados}")
 
-    nombres_excepciones = [
-        "FONSECA YUGCHA SHIFER MARIOLY",
-        "MERA LOOR EILEEN MARIED",
-        "VERDUGA RODRIGUEZ EMILIO ALEJANDRO"
+    nombres_buenos = [
+        "CEDEÑO VILELA GEYSHA ANTHONELLA",
+        "GRACIA ESPINOZA ASHLY YANAY",
+        "MACIAS PALLAROSO LIA SCARLETT",
+        "MENDOZA CEVALLOS MILAGROS SOFIA",
+        "MONTESDEOCA BARRE YARELI ITZAYANA",
+        "ROBLES ANCHUNDIA THEO JESUS",
+        "Solórzano Cedeño Amy",
+        "ZAMBRANO MIRANDA MAYKEL YAHIR"
     ]
 
-    opcion = input("¿Desea procesar todos los estudiantes o solo las excepciones? (todos/excepciones): ").strip().lower()
+    nombres_malos = [
+        "TOURIZ CHEME EITHAN DANIEL",
+        "NAPA BALOY ANGEL EDUARDO",
+        "PANEZO LEGÑA AITANNA PAULETTE"
+    ]
+
+    opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos): ").strip().lower()
     accion = input("¿Qué acción desea realizar? (llenar/borrar): ").strip().lower()
-    
+
     for trimestre_num in trimestres_seleccionados:
         print(f"\nSeleccionando Trimestre {trimestre_num}...")
         seleccionar_trimestre(page, trimestre_num)
@@ -240,9 +262,11 @@ def obtener_ambito_y_scrapear(page):
         for ambito in ambitos:
             print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
             if opcion == "todos":
-                procesar_todos_los_estudiantes(page, ambito, trimestre_num,accion=accion)
-            elif opcion == "excepciones":
-                procesar_estudiantes_excepciones(page, ambito, trimestre_num, nombres_excepciones,accion=accion)
+                procesar_filas(page, ambito, trimestre_num, nombres_buenos=nombres_buenos, nombres_malos=nombres_malos, accion=accion)
+            elif opcion == "buenos":
+                procesar_filas(page, ambito, trimestre_num, nombres_buenos=nombres_buenos, nombres_malos=None, accion=accion)
+            elif opcion == "malos":
+                procesar_filas(page, ambito, trimestre_num, nombres_buenos=None, nombres_malos=nombres_malos, accion=accion)
             else:
                 print("Opción no válida. Finalizando...")
                 return False
