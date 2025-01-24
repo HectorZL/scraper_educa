@@ -1,7 +1,7 @@
 materias = [
     {
         "nombre": "EDUCACIÓN FÍSICA",
-        "jornada": "MATUTINA",
+        "jornada": "VESPERTINA",
         "ambitos": [
             "PRÁCTICAS LÚDICAS: LOS JUEGOS Y EL JUGAR",
             "PRÁCTICAS GIMNÁSTICAS",
@@ -12,7 +12,7 @@ materias = [
     },
     {
         "nombre": "EDUCACIÓN CULTURAL Y ARTÍSTICA",
-        "jornada": "MATUTINA",
+        "jornada": "VESPERTINA",
         "ambitos": [
             "EL YO: LA IDENTIDAD",
             "EL ENCUENTRO CON OTROS: LA ALTERIDAD",
@@ -21,7 +21,7 @@ materias = [
     },
     {
         "nombre": "CURRÍCULO INTEGRADOR POR ÁMBITOS DE APRENDIZAJE",
-        "jornada": "MATUTINA",
+        "jornada": "VESPERTINA",
         "ambitos": [
             "IDENTIDAD Y AUTONOMÍA",
             "CONVIVENCIA",
@@ -41,9 +41,9 @@ trimestres_borrar = {
     3: ("TRIMESTRE 3", "NE")
 }
 trimestres = {
-    1: ("TRIMESTRE 1", "B+"),
-    2: ("TRIMESTRE 2", "A-"),
-    3: ("TRIMESTRE 3", "A+")
+    1: ("TRIMESTRE 1", "B-"),
+    2: ("TRIMESTRE 2", "B+"),
+    3: ("TRIMESTRE 3", "B+")
 }
 
 trimestres_buenos_estudiantes = {

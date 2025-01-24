@@ -18,11 +18,12 @@ def perform_login(page, correo_login, contraseña):
     try:
         print("Iniciando proceso de autenticación...")
         # Esperar y llenar el campo de usuario
-        page.wait_for_selector("input[formcontrolname='usuario']", timeout=2000)
+        page.goto("https://academico.educarecuador.gob.ec/academico-servicios/pages/authentication/login-v2")
+        page.wait_for_selector("input[formcontrolname='usuario']", timeout=20000)
         page.fill("input[formcontrolname='usuario']", correo_login)
         
         # Esperar y llenar el campo de contraseña
-        page.wait_for_selector("input[formcontrolname='password']", timeout=2000)
+        page.wait_for_selector("input[formcontrolname='password']", timeout=20000)
         page.fill("input[formcontrolname='password']", contraseña)
         
         # Click en el botón de login

@@ -136,18 +136,22 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
             total_filas = len(rows)
             print(f"Encontradas {total_filas} filas en esta página.")
 
-            for row_idx in range(len(rows)):
+            for row_idx in range(total_filas):
                 try:
                     rows = page.query_selector_all('table tbody tr')
+                    if row_idx >= len(rows):
+                        print(f"Índice fuera de rango ({row_idx}). Recargando filas...")
+                        break
+
                     row = rows[row_idx]
 
                     nombre_estudiante_element = row.query_selector('td.th-fixed')
                     if not nombre_estudiante_element:
+                        print(f"Fila {row_idx}: No se encontró el elemento de nombre.")
                         continue
 
                     nombre_estudiante = normalize_text(nombre_estudiante_element.inner_text())
 
-                    # Determinar la nota basada en los grupos de estudiantes
                     if nombres_buenos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_buenos]:
                         nota = trimestres_buenos_estudiantes[trimestre_num][1]
                         print(f"{nombre_estudiante} identificado como 'bueno'. Nota: {nota}")
@@ -199,22 +203,25 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                     else:
                         print(f"No se encontró el botón de guardar para {nombre_estudiante}")
                 except Exception as e:
-                    print(f"Error al procesar una fila: {e}")
+                    print(f"Error al procesar la fila {row_idx}: {str(e)}")
 
-            next_button = page.query_selector('button.mat-paginator-navigation-next')
-            if next_button and next_button.is_enabled():
+            next_button = page.query_selector('button.mat-paginator-navigation-next:not([disabled])')
+            if next_button:
                 next_button.click()
+                print("Avanzando a la siguiente página...")
                 time.sleep(3)
                 page.evaluate("""() => { window.scrollTo(0, 0); }""")
             else:
+                print("No hay más páginas para procesar.")
                 break
 
         print("Datos académicos actualizados correctamente.")
         return True
 
     except Exception as e:
-        print(f"Error durante el scraping: {str(e)}")
+        print(f"Error durante el procesamiento: {str(e)}")
         return False
+
 
 
 def procesar_todos_los_estudiantes(page, ambito_seleccionado, trimestre_num, accion="llenar"):
@@ -236,14 +243,22 @@ def obtener_ambito_y_scrapear(page):
     print(f"Trimestres seleccionados: {trimestres_seleccionados}")
 
     nombres_buenos = [
-        "CEDEÑO VILELA GEYSHA ANTHONELLA",
-        "GRACIA ESPINOZA ASHLY YANAY",
-        "MACIAS PALLAROSO LIA SCARLETT",
-        "MENDOZA CEVALLOS MILAGROS SOFIA",
-        "MONTESDEOCA BARRE YARELI ITZAYANA",
-        "ROBLES ANCHUNDIA THEO JESUS",
-        "Solórzano Cedeño Amy",
-        "ZAMBRANO MIRANDA MAYKEL YAHIR"
+        "ALCIVAR CEDEÑO JEREMY JARETH",
+        "ANGULO CHEME DARKIEL FABRICIO",
+        "ANZULEZ LOOR ISIS HAIDEE",
+        "BASTIDAS MORILLO JASIEL SEGUNDO",
+        "CASTAÑEDA CAGUA KALED YADIEL",
+        "CEVALLOS RESTREPO MARIA VICTORIA",
+        "CHUCURI OCHOA LIAM JABDIEL",
+        "CRIOLLO CARRIEL DOMENICA JOSDANNY",
+        "LOOR MEDRANDA ROY MATEO",
+        "MEJIA MANZABA MILLIAM EZEQUIEL",
+        "NAPA VILELA ISAAC JARED",
+        "NEVAREZ MENENDEZ KEISHY ADRIANA",
+        "ROSADO PRECIADO ISAAC DARELL",
+        "SOLORZANO MELENDREZ JOSTIN RAFAEL",
+        "VERA MONCAYO REBECA JUDITH",
+        "VERA PACHECO MARIA SALOME"
     ]
 
     nombres_malos = [
