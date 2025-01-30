@@ -31,6 +31,18 @@ materias = [
             "COMPRESIÓN Y EXPRESION ARTÍSTICA",
             "EXPRESIÓN CORPORAL"
         ]
+    },{
+        "nombre": "ÁMBITOS DE DESARROLLO Y APRENDIZAJE",
+        "jornada": "MATUTINA",
+        "ambitos": [
+            "IDENTIDAD Y AUTONOMÍA",
+            "CONVIVENCIA",
+            "RELACIONES CON EL MEDIO NATURAL Y CULTURAL",
+            "RELACIONES LÓGICO-MATEMÁTICAS",
+            "COMPRENSIÓN Y EXPRESIÓN DEL LENGUAJE",
+            "EXPRESIÓN ARTÍSTICA",
+            "EXPRESIÓN CORPORAL Y MOTRICIDAD"
+        ]
     }
 ]
 
@@ -53,7 +65,7 @@ trimestres_buenos_estudiantes = {
 }
 
 trimestres_malos_estudiantes = {
-    1: ("TRIMESTRE 1", "B-"),
-    2: ("TRIMESTRE 2", "B+"),
-    3: ("TRIMESTRE 3", "A-")
+    1: ("TRIMESTRE 1", "NE"),
+    2: ("TRIMESTRE 2", "NE"),
+    3: ("TRIMESTRE 3", "NE")
 }

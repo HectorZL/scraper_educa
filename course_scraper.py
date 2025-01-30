@@ -12,6 +12,7 @@ from academic_data import (
 from ambitos import obtener_ambitos_usuario
 from trimesters import obtener_trimestres_usuario
 from utils import obtener_materia_usuario
+from nombres_estudiantes import nombres_buenos, nombres_malos 
 
 def normalize_text(text):
     text = text.strip().lower()
@@ -103,8 +104,11 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
         print(f"Error al seleccionar la materia '{nombre}': {e}")
         return False
 
+import time
+
 def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, nombres_buenos=None, nombres_malos=None, accion="llenar"):
     print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")
+
     try:
         print("Seleccionando ámbito...")
 
@@ -122,6 +126,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
             print(f"No se encontró el ámbito '{ambito_seleccionado}'.")
             return False
 
+        # Volver a la primera página
         print("Volviendo a la primera página...")
         while True:
             prev_button = page.query_selector('button.mat-paginator-navigation-previous')
@@ -156,6 +161,16 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
 
                     nombre_estudiante = normalize_text(nombre_estudiante_element.inner_text())
 
+                    # Filtrado por listas de buenos, malos o excepciones
+                    if nombres_buenos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_buenos]:
+                        print(f"  - {nombre_estudiante} no es un 'bueno'. Ignorando...")
+                        continue
+                    
+                    if nombres_malos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_malos]:
+                        print(f"  - {nombre_estudiante} no es un 'malo'. Ignorando...")
+                        continue
+
+                    # Asignar nota según tipo de estudiante
                     if nombres_buenos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_buenos]:
                         nota = trimestres_buenos_estudiantes[trimestre_num][1]
                         print(f"{nombre_estudiante} identificado como 'bueno'. Nota: {nota}")
@@ -169,17 +184,40 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                         nota = trimestres_borrar[trimestre_num][1] if accion == "borrar" else trimestres[trimestre_num][1]
 
                     print(f"Procesando datos para {nombre_estudiante}...")
+
+                    # Procesar los inputs para la calificación
                     row_inputs = row.query_selector_all('input.form-control.text-center.text-uppercase')
                     for idx, input_element in enumerate(row_inputs):
                         if not input_element:
                             print(f"  - Campo {idx + 1} no encontrado, saltando.")
                             continue
 
-                        input_element.fill("")
+                        input_element.fill("")  # Limpiar el campo antes de llenarlo
+
+                        # Llenar la calificación "NE"
                         input_element.fill(nota)
                         print(f"  - Campo {idx + 1} rellenado con nota: {nota}")
+
+                    # Manejo de popups después de llenar los campos
+                    while True:
+                        try:
+                            warning_popup = page.query_selector('.swal2-popup.swal2-show')
+                            if warning_popup:
+                                print(f"Advertencia detectada, cerrando popup...")
+                                ok_button = page.query_selector('button.swal2-confirm.swal2-styled')
+                                if ok_button:
+                                    ok_button.click()
+                                    time.sleep(1)  # Esperar después del primer clic
+                                print("  - Popup cerrado correctamente.")
+                            else:
+                                break  # No hay popup, continuar con el siguiente paso
+                        except Exception as e:
+                            print(f"Error al manejar popup de advertencia: {e}")
+                            break
+
                     time.sleep(1)
 
+                    # Hacer clic en el botón de guardar después de llenar la nota
                     save_button = row.query_selector('button.btn.btn-icon.btn-outline-primary')
                     if save_button:
                         page.evaluate(
@@ -193,22 +231,27 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                         save_button.click()
                         time.sleep(1)
 
-                        guardar_button = page.wait_for_selector(
-                            'button.swal2-confirm.swal2-styled', state="visible", timeout=5000)
-                        guardar_button.click()
-                        print(f"  - Cambios guardados para {nombre_estudiante}")
-                        time.sleep(1)
+                        # Esperar el popup de confirmación y hacer clic en "OK"
+                        try:
+                            guardar_button = page.wait_for_selector(
+                                'button.swal2-confirm.swal2-styled:has-text("OK")', state="visible", timeout=5000)
+                            guardar_button.click()
+                            print(f"  - Cambios guardados para {nombre_estudiante}")
+                            time.sleep(1)
 
-                        ok_button = page.wait_for_selector(
-                            'button.swal2-confirm.swal2-styled:has-text(\"OK\")', state="visible", timeout=5000)
-                        ok_button.click()
-                        print(f"  - Confirmación de guardado OK para {nombre_estudiante}")
-                        time.sleep(1)
+                            ok_button = page.wait_for_selector(
+                                'button.swal2-confirm.swal2-styled:has-text(\"OK\")', state="visible", timeout=5000)
+                            ok_button.click()
+                            print(f"  - Confirmación de guardado OK para {nombre_estudiante}")
+                        except Exception as e:
+                            print(f"Error al esperar o hacer clic en el botón de guardar: {e}")
+                            continue
                     else:
                         print(f"No se encontró el botón de guardar para {nombre_estudiante}")
                 except Exception as e:
                     print(f"Error al procesar la fila {row_idx}: {str(e)}")
 
+            # Navegar a la siguiente página si existe un botón "next"
             next_button = page.query_selector('button.mat-paginator-navigation-next:not([disabled])')
             if next_button:
                 next_button.click()
@@ -245,31 +288,6 @@ def obtener_ambito_y_scrapear(page):
 
     trimestres_seleccionados = obtener_trimestres_usuario()
     print(f"Trimestres seleccionados: {trimestres_seleccionados}")
-
-    nombres_buenos = [
-        "ALCIVAR CEDEÑO JEREMY JARETH",
-        "ANGULO CHEME DARKIEL FABRICIO",
-        "ANZULEZ LOOR ISIS HAIDEE",
-        "BASTIDAS MORILLO JASIEL SEGUNDO",
-        "CASTAÑEDA CAGUA KALED YADIEL",
-        "CEVALLOS RESTREPO MARIA VICTORIA",
-        "CHUCURI OCHOA LIAM JABDIEL",
-        "CRIOLLO CARRIEL DOMENICA JOSDANNY",
-        "LOOR MEDRANDA ROY MATEO",
-        "MEJIA MANZABA MILLIAM EZEQUIEL",
-        "NAPA VILELA ISAAC JARED",
-        "NEVAREZ MENENDEZ KEISHY ADRIANA",
-        "ROSADO PRECIADO ISAAC DARELL",
-        "SOLORZANO MELENDREZ JOSTIN RAFAEL",
-        "VERA MONCAYO REBECA JUDITH",
-        "VERA PACHECO MARIA SALOME"
-    ]
-
-    nombres_malos = [
-        "TOURIZ CHEME EITHAN DANIEL",
-        "NAPA BALOY ANGEL EDUARDO",
-        "PANEZO LEGÑA AITANNA PAULETTE"
-    ]
 
     opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos): ").strip().lower()
     accion = input("¿Qué acción desea realizar? (llenar/borrar): ").strip().lower()
