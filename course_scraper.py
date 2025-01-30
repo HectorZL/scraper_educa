@@ -104,9 +104,7 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
         print(f"Error al seleccionar la materia '{nombre}': {e}")
         return False
 
-import time
-
-def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, nombres_buenos=None, nombres_malos=None, accion="llenar"):
+def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, nombres_buenos=None, nombres_malos=None, accion="llenar", grupo="todos"):
     print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")
 
     try:
@@ -161,27 +159,35 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
 
                     nombre_estudiante = normalize_text(nombre_estudiante_element.inner_text())
 
-                    # Filtrado por listas de buenos, malos o excepciones
-                    if nombres_buenos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_buenos]:
-                        print(f"  - {nombre_estudiante} no es un 'bueno'. Ignorando...")
-                        continue
-                    
-                    if nombres_malos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_malos]:
-                        print(f"  - {nombre_estudiante} no es un 'malo'. Ignorando...")
-                        continue
-
-                    # Asignar nota según tipo de estudiante
-                    if nombres_buenos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_buenos]:
-                        nota = trimestres_buenos_estudiantes[trimestre_num][1]
-                        print(f"{nombre_estudiante} identificado como 'bueno'. Nota: {nota}")
-                    elif nombres_malos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_malos]:
-                        nota = trimestres_malos_estudiantes[trimestre_num][1]
-                        print(f"{nombre_estudiante} identificado como 'malo'. Nota: {nota}")
-                    elif nombres_excepciones and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_excepciones]:
-                        nota = trimestres_excepciones[trimestre_num][1]
-                        print(f"{nombre_estudiante} identificado como 'excepción'. Nota: {nota}")
+                    # Si se procesan "todos", no se deben aplicar filtros de buenos/malos
+                    if grupo == "todos":
+                        # Asignar la nota por defecto de trimestre si es "todos"
+                        nota = trimestres[trimestre_num][1] if accion != "borrar" else trimestres_borrar[trimestre_num][1]
+                        print(f"{nombre_estudiante} asignado con la nota normal: {nota}")
                     else:
-                        nota = trimestres_borrar[trimestre_num][1] if accion == "borrar" else trimestres[trimestre_num][1]
+                        # Si no es "todos", verificar si es "bueno" o "malo"
+                        if nombres_buenos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_buenos]:
+                            print(f"  - {nombre_estudiante} no es un 'bueno'. Ignorando...")
+                            continue
+
+                        if nombres_malos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_malos]:
+                            print(f"  - {nombre_estudiante} no es un 'malo'. Ignorando...")
+                            continue
+
+                        # Asignar la nota de acuerdo a los tipos de estudiantes
+                        if nombres_buenos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_buenos]:
+                            nota = trimestres_buenos_estudiantes[trimestre_num][1]
+                            print(f"{nombre_estudiante} identificado como 'bueno'. Nota: {nota}")
+                        elif nombres_malos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_malos]:
+                            nota = trimestres_malos_estudiantes[trimestre_num][1]
+                            print(f"{nombre_estudiante} identificado como 'malo'. Nota: {nota}")
+                        elif nombres_excepciones and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_excepciones]:
+                            nota = trimestres_excepciones[trimestre_num][1]
+                            print(f"{nombre_estudiante} identificado como 'excepción'. Nota: {nota}")
+                        else:
+                            # Asignar la nota por defecto de trimestre si no es "bueno" ni "malo"
+                            nota = trimestres[trimestre_num][1] if accion != "borrar" else trimestres_borrar[trimestre_num][1]
+                            print(f"{nombre_estudiante} asignado con la nota normal: {nota}")
 
                     print(f"Procesando datos para {nombre_estudiante}...")
 
@@ -194,7 +200,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
 
                         input_element.fill("")  # Limpiar el campo antes de llenarlo
 
-                        # Llenar la calificación "NE"
+                        # Llenar la calificación con la nota asignada
                         input_element.fill(nota)
                         print(f"  - Campo {idx + 1} rellenado con nota: {nota}")
 
@@ -231,18 +237,19 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                         save_button.click()
                         time.sleep(1)
 
-                        # Esperar el popup de confirmación y hacer clic en "OK"
+                        # Esperar el popup de confirmación y hacer clic en el primer "Guardar"
                         try:
                             guardar_button = page.wait_for_selector(
-                                'button.swal2-confirm.swal2-styled:has-text("OK")', state="visible", timeout=5000)
+                                'button.swal2-confirm.swal2-styled', state="visible", timeout=5000)
                             guardar_button.click()
                             print(f"  - Cambios guardados para {nombre_estudiante}")
                             time.sleep(1)
 
+                            # Ahora esperamos el popup final con el botón "OK"
                             ok_button = page.wait_for_selector(
-                                'button.swal2-confirm.swal2-styled:has-text(\"OK\")', state="visible", timeout=5000)
+                                'button.swal2-confirm.swal2-styled:has-text("OK")', state="visible", timeout=5000)
                             ok_button.click()
-                            print(f"  - Confirmación de guardado OK para {nombre_estudiante}")
+                            print(f"  - Confirmación de guardado OK final para {nombre_estudiante}")
                         except Exception as e:
                             print(f"Error al esperar o hacer clic en el botón de guardar: {e}")
                             continue
@@ -269,13 +276,12 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
         print(f"Error durante el procesamiento: {str(e)}")
         return False
 
-
-
+# Funciones para procesar todos los estudiantes o excepciones
 def procesar_todos_los_estudiantes(page, ambito_seleccionado, trimestre_num, accion="llenar"):
-    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, accion=accion)
+    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, accion=accion, grupo="todos")
 
 def procesar_estudiantes_excepciones(page, ambito_seleccionado, trimestre_num, nombres_excepciones, accion="llenar"):
-    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=nombres_excepciones, accion=accion)
+    return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=nombres_excepciones, accion=accion, grupo="excepciones")
 
 def obtener_ambito_y_scrapear(page):
     materia = obtener_materia_usuario()

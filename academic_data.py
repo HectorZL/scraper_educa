@@ -53,19 +53,19 @@ trimestres_borrar = {
     3: ("TRIMESTRE 3", "NE")
 }
 trimestres = {
-    1: ("TRIMESTRE 1", "B-"),
-    2: ("TRIMESTRE 2", "B+"),
-    3: ("TRIMESTRE 3", "B+")
+    1: ("TRIMESTRE 1", "C-"),
+    2: ("TRIMESTRE 2", "B-"),
+    3: ("TRIMESTRE 3", "A+")
 }
 
 trimestres_buenos_estudiantes = {
-    1: ("TRIMESTRE 1", "A-"),
-    2: ("TRIMESTRE 2", "A+"),
+    1: ("TRIMESTRE 1", "C-"),
+    2: ("TRIMESTRE 2", "B-"),
     3: ("TRIMESTRE 3", "A+")
 }
 
 trimestres_malos_estudiantes = {
-    1: ("TRIMESTRE 1", "NE"),
+    1: ("TRIMESTRE 1", "C-"),
     2: ("TRIMESTRE 2", "NE"),
     3: ("TRIMESTRE 3", "NE")
 }
