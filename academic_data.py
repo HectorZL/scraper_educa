@@ -1,7 +1,7 @@
 materias = [
     {
         "nombre": "EDUCACIÓN FÍSICA",
-        "jornada": "VESPERTINA",
+        "jornada": "MATUTINA",
         "ambitos": [
             "PRÁCTICAS LÚDICAS: LOS JUEGOS Y EL JUGAR",
             "PRÁCTICAS GIMNÁSTICAS",
@@ -12,7 +12,7 @@ materias = [
     },
     {
         "nombre": "EDUCACIÓN CULTURAL Y ARTÍSTICA",
-        "jornada": "VESPERTINA",
+        "jornada": "MATUTINA",
         "ambitos": [
             "EL YO: LA IDENTIDAD",
             "EL ENCUENTRO CON OTROS: LA ALTERIDAD",
@@ -21,7 +21,7 @@ materias = [
     },
     {
         "nombre": "CURRÍCULO INTEGRADOR POR ÁMBITOS DE APRENDIZAJE",
-        "jornada": "VESPERTINA",
+        "jornada": "MATUTINA",
         "ambitos": [
             "IDENTIDAD Y AUTONOMÍA",
             "CONVIVENCIA",

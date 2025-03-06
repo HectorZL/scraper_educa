@@ -57,30 +57,37 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
         normalized_jornada = normalize_text(jornada)
         print(f"Buscando materia que contenga '{normalized_nombre}' con jornada '{normalized_jornada}'")
 
+        # Navegar a la página de calificaciones
         page.goto("https://academico.educarecuador.gob.ec/academico-servicios/pages/calificacion_ordinaria")
         page.wait_for_load_state('networkidle')
+
         pagina_actual = 1
         while True:
             print(f"\nRevisando página {pagina_actual}...")
             page.wait_for_load_state('networkidle')
-            page.wait_for_selector('table tbody tr.mat-row', state="visible", timeout=10000)
-            filas = page.query_selector_all('table tbody tr.mat-row:not(.mat-header-row)')
+            page.wait_for_selector('table tbody tr', state="visible", timeout=10000)
+            filas = page.query_selector_all('table tbody tr.ng-star-inserted')
 
             for fila in filas:
-                nombre_element = fila.query_selector('td.cdk-column-descripcion')
-                jornada_element = fila.query_selector('td.cdk-column-jornada')
-                
-                if nombre_element and jornada_element:
-                    n_text = normalize_text(nombre_element.inner_text())
-                    j_text = normalize_text(jornada_element.inner_text())
-                    
-                    if normalized_nombre in n_text and normalized_jornada in j_text:
+                # Extraer los datos de la fila
+                asignatura_element = fila.query_selector('td:nth-child(2)')  # Columna "Asignatura"
+                grado_element = fila.query_selector('td:nth-child(3)')       # Columna "Grado"
+                jornada_element = fila.query_selector('td:nth-child(5)')     # Columna "Jornada"
+
+                if asignatura_element and grado_element and jornada_element:
+                    asignatura_text = normalize_text(asignatura_element.inner_text())
+                    grado_text = normalize_text(grado_element.inner_text())
+                    jornada_text = normalize_text(jornada_element.inner_text())
+
+                    # Verificar si coincide con la materia buscada
+                    if normalized_nombre in asignatura_text and normalized_jornada in jornada_text:
                         print("Coincidencia encontrada.")
-                        icon = fila.query_selector('mat-icon[data-mat-icon-type="font"]')
-                        if icon:
-                            icon.click()
+                        boton_editar = fila.query_selector('button.btn-warning')
+                        if boton_editar:
+                            boton_editar.click()
                             return True
 
+            # Buscar el botón "Siguiente" para avanzar a la siguiente página
             next_button = page.query_selector('li.page-item a.page-link:has-text("Siguiente")')
             if next_button:
                 parent = next_button.evaluate_handle("el => el.parentElement")
