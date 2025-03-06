@@ -23,29 +23,18 @@ def normalize_text(text):
 def seleccionar_trimestre(page, trimestre_num):
     try:
         print(f"Intentando seleccionar trimestre {trimestre_num}...")
-
-        # Usamos un selector más robusto que incluye múltiples atributos
-        selector = f'div.mat-tab-label[role="tab"][aria-posinset="{trimestre_num}"]'
-        tab = page.wait_for_selector(selector, state="visible", timeout=10000)
-        if not tab:
-            print(f"No se encontró el tab para el trimestre {trimestre_num}")
-            return False
-
-        # Nos aseguramos de que el elemento esté visible en la ventana antes de hacer clic
-        page.evaluate("""(tab) => { tab.scrollIntoView({behavior: 'smooth', block: 'center'}); }""", tab)
-        time.sleep(1)
-        tab.click()
-        time.sleep(2)
-
-        # Verificamos si el trimestre está activo después de hacer clic
-        parent_tab = page.query_selector(selector)
-        if parent_tab and 'mat-tab-label-active' in parent_tab.get_attribute('class'):
-            print(f"Trimestre {trimestre_num} seleccionado correctamente")
-            return True
-
-        print(f"El trimestre {trimestre_num} no se activó.")
-        return False
-
+        # Selector del dropdown de trimestres
+        selector = 'select[name="trimestreSeleccionado"]'
+        page.wait_for_selector(selector, state="visible", timeout=10000)
+        
+        # Seleccionar por texto visible (ej: "TRIMESTRE 3")
+        page.select_option(
+            selector,
+            label=f"TRIMESTRE {trimestre_num}",
+            timeout=10000
+        )
+        print(f"Trimestre {trimestre_num} seleccionado correctamente")
+        return True
     except Exception as e:
         print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
         return False
@@ -117,7 +106,8 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
     try:
         print("Seleccionando ámbito...")
 
-        options = page.query_selector_all('select[name="codigoAmbito"] option')
+        # Selector del dropdown de ámbitos (nuevo nombre)
+        options = page.query_selector_all('select[name="ambitoSeleccionado"] option')
         value_to_select = None
         for option in options:
             if normalize_text(option.inner_text()) == normalize_text(ambito_seleccionado):
@@ -125,7 +115,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                 break
 
         if value_to_select:
-            page.select_option('select[name="codigoAmbito"]', value=value_to_select)
+            page.select_option('select[name="ambitoSeleccionado"]', value=value_to_select)
             print(f"Ámbito '{ambito_seleccionado}' seleccionado correctamente.")
         else:
             print(f"No se encontró el ámbito '{ambito_seleccionado}'.")
