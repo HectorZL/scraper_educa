@@ -124,7 +124,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
         # Volver a la primera página
         print("Volviendo a la primera página...")
         while True:
-            prev_button = page.query_selector('button.mat-paginator-navigation-previous')
+            prev_button = page.query_selector('button.btn-primary:has-text("Anterior")')
             if prev_button and not prev_button.is_disabled():
                 prev_button.click()
                 time.sleep(1)
@@ -189,7 +189,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                     print(f"Procesando datos para {nombre_estudiante}...")
 
                     # Procesar los inputs para la calificación
-                    row_inputs = row.query_selector_all('input.form-control.text-center.text-uppercase')
+                    row_inputs = row.query_selector_all('input')
                     for idx, input_element in enumerate(row_inputs):
                         if not input_element:
                             print(f"  - Campo {idx + 1} no encontrado, saltando.")
@@ -221,7 +221,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                     time.sleep(1)
 
                     # Hacer clic en el botón de guardar después de llenar la nota
-                    save_button = row.query_selector('button.btn.btn-icon.btn-outline-primary')
+                    save_button = row.query_selector('button.btn-primary:has-text("Guardar")')
                     if save_button:
                         page.evaluate(
                             """(btn) => {
@@ -244,9 +244,9 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
 
                             # Ahora esperamos el popup final con el botón "OK"
                             ok_button = page.wait_for_selector(
-                                'button.swal2-confirm.swal2-styled:has-text("OK")', state="visible", timeout=5000)
+                                'button.swal2-confirm.swal2-styled:has-text("Aceptar")', state="visible", timeout=5000)
                             ok_button.click()
-                            print(f"  - Confirmación de guardado OK final para {nombre_estudiante}")
+                            print(f"  - Confirmación de guardado Aceptar final para {nombre_estudiante}")
                         except Exception as e:
                             print(f"Error al esperar o hacer clic en el botón de guardar: {e}")
                             continue
@@ -256,7 +256,7 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                     print(f"Error al procesar la fila {row_idx}: {str(e)}")
 
             # Navegar a la siguiente página si existe un botón "next"
-            next_button = page.query_selector('button.mat-paginator-navigation-next:not([disabled])')
+            next_button = page.query_selector('button.btn-primary:has-text("Siguiente")')
             if next_button:
                 next_button.click()
                 print("Avanzando a la siguiente página...")
