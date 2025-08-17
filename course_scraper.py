@@ -6,13 +6,15 @@ import re
 from academic_data import (
     trimestres,
     trimestres_borrar,
+    trimestres_borrar_malos,
     trimestres_buenos_estudiantes,
-    trimestres_malos_estudiantes
+    trimestres_malos_estudiantes,
+    trimestres_excepciones
 )
 from ambitos import obtener_ambitos_usuario
 from trimesters import obtener_trimestres_usuario
 from utils import obtener_materia_usuario
-from nombres_estudiantes import nombres_buenos, nombres_malos 
+from nombres_estudiantes import nombres_buenos, nombres_malos, nombres_excepciones, notas_personalizadas
 
 def normalize_text(text):
     text = text.strip().lower()
@@ -38,7 +40,6 @@ def seleccionar_trimestre(page, trimestre_num):
     except Exception as e:
         print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
         return False
-
 
 def seleccionar_materia(page, nombre, jornada, timeout=20000):
     try:
@@ -100,7 +101,7 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
         print(f"Error al seleccionar la materia '{nombre}': {e}")
         return False
 
-def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, nombres_buenos=None, nombres_malos=None, accion="llenar", grupo="todos"):
+def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=None, nombres_buenos=None, nombres_malos=None, accion="llenar", grupo=None):
     print(f"Procesando {ambito_seleccionado} para Trimestre {trimestre_num}...")
 
     try:
@@ -148,45 +149,46 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                         break
 
                     row = rows[row_idx]
-
                     nombre_estudiante_element = row.query_selector('td.th-fixed')
                     if not nombre_estudiante_element:
                         print(f"Fila {row_idx}: No se encontró el elemento de nombre.")
                         continue
 
                     nombre_estudiante = normalize_text(nombre_estudiante_element.inner_text())
+                    
+                    # Verificar si el estudiante está en la lista de excepciones
+                    if nombres_excepciones and nombre_estudiante in [normalize_text(n) for n in nombres_excepciones]:
+                        print(f"  - {nombre_estudiante} está en la lista de excepciones. Saltando...")
+                        continue
 
-                    # Si se procesan "todos", no se deben aplicar filtros de buenos/malos
+                    # Determinar la nota según el grupo
                     if grupo == "todos":
-                        # Asignar la nota por defecto de trimestre si es "todos"
                         nota = trimestres[trimestre_num][1] if accion != "borrar" else trimestres_borrar[trimestre_num][1]
                         print(f"{nombre_estudiante} asignado con la nota normal: {nota}")
+                    
+                    # Resto de la lógica para otros grupos...
+                    elif grupo == "buenos":
+                        if not nombres_buenos or nombre_estudiante not in [normalize_text(n) for n in nombres_buenos]:
+                            print(f"  - {nombre_estudiante} no está en 'buenos'. Ignorando...")
+                            continue
+                        nota = trimestres_buenos_estudiantes[trimestre_num][1] if accion != "borrar" else trimestres_borrar[trimestre_num][1]
+                    
+                    elif grupo == "malos":
+                        if not nombres_malos or nombre_estudiante not in [normalize_text(n) for n in nombres_malos]:
+                            print(f"  - {nombre_estudiante} no está en 'malos'. Ignorando...")
+                            continue
+                        nota = trimestres_malos_estudiantes[trimestre_num][1] if accion != "borrar" else trimestres_borrar_malos[trimestre_num][1]
+                    
+                    elif grupo == "personalizado":
+                        nota = notas_personalizadas.get(nombre_estudiante, {}).get(trimestre_num)
+                        if not nota:
+                            print(f"  - {nombre_estudiante} no tiene nota personalizada. Ignorando...")
+                            continue
+                        print(f"  - {nombre_estudiante} identificado como 'personalizado'. Nota: {nota}")
+                    
                     else:
-                        # Si no es "todos", verificar si es "bueno" o "malo"
-                        if nombres_buenos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_buenos]:
-                            print(f"  - {nombre_estudiante} no es un 'bueno'. Ignorando...")
-                            continue
-
-                        if nombres_malos and nombre_estudiante not in [normalize_text(nombre) for nombre in nombres_malos]:
-                            print(f"  - {nombre_estudiante} no es un 'malo'. Ignorando...")
-                            continue
-
-                        # Asignar la nota de acuerdo a los tipos de estudiantes
-                        if nombres_buenos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_buenos]:
-                            nota = trimestres_buenos_estudiantes[trimestre_num][1]
-                            print(f"{nombre_estudiante} identificado como 'bueno'. Nota: {nota}")
-                        elif nombres_malos and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_malos]:
-                            nota = trimestres_malos_estudiantes[trimestre_num][1]
-                            print(f"{nombre_estudiante} identificado como 'malo'. Nota: {nota}")
-                        elif nombres_excepciones and nombre_estudiante in [normalize_text(nombre) for nombre in nombres_excepciones]:
-                            nota = trimestres_excepciones[trimestre_num][1]
-                            print(f"{nombre_estudiante} identificado como 'excepción'. Nota: {nota}")
-                        else:
-                            # Asignar la nota por defecto de trimestre si no es "bueno" ni "malo"
-                            nota = trimestres[trimestre_num][1] if accion != "borrar" else trimestres_borrar[trimestre_num][1]
-                            print(f"{nombre_estudiante} asignado con la nota normal: {nota}")
-
-                    print(f"Procesando datos para {nombre_estudiante}...")
+                        print(f"Grupo '{grupo}' no válido. Ignorando...")
+                        continue
 
                     # Procesar los inputs para la calificación
                     row_inputs = row.query_selector_all('input')
@@ -292,7 +294,7 @@ def obtener_ambito_y_scrapear(page):
     trimestres_seleccionados = obtener_trimestres_usuario()
     print(f"Trimestres seleccionados: {trimestres_seleccionados}")
 
-    opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos): ").strip().lower()
+    opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado): ").strip().lower()
     accion = input("¿Qué acción desea realizar? (llenar/borrar): ").strip().lower()
 
     for trimestre_num in trimestres_seleccionados:
@@ -302,11 +304,34 @@ def obtener_ambito_y_scrapear(page):
         for ambito in ambitos:
             print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
             if opcion == "todos":
-                procesar_filas(page, ambito, trimestre_num, nombres_buenos=nombres_buenos, nombres_malos=nombres_malos, accion=accion)
+                # Procesar todos los estudiantes excepto las excepciones
+                procesar_filas(page, ambito, trimestre_num, 
+                             nombres_excepciones=nombres_excepciones, 
+                             nombres_buenos=nombres_buenos, 
+                             nombres_malos=nombres_malos, 
+                             accion=accion, 
+                             grupo="todos")
             elif opcion == "buenos":
-                procesar_filas(page, ambito, trimestre_num, nombres_buenos=nombres_buenos, nombres_malos=None, accion=accion)
+                procesar_filas(page, ambito, trimestre_num, 
+                             nombres_excepciones=nombres_excepciones,
+                             nombres_buenos=nombres_buenos, 
+                             nombres_malos=None, 
+                             accion=accion, 
+                             grupo="buenos")
             elif opcion == "malos":
-                procesar_filas(page, ambito, trimestre_num, nombres_buenos=None, nombres_malos=nombres_malos, accion=accion)
+                procesar_filas(page, ambito, trimestre_num, 
+                             nombres_excepciones=nombres_excepciones,
+                             nombres_buenos=None, 
+                             nombres_malos=nombres_malos, 
+                             accion=accion, 
+                             grupo="malos")
+            elif opcion == "personalizado":
+                procesar_filas(page, ambito, trimestre_num, 
+                             nombres_excepciones=nombres_excepciones,
+                             nombres_buenos=None, 
+                             nombres_malos=None, 
+                             accion=accion, 
+                             grupo="personalizado")
             else:
                 print("Opción no válida. Finalizando...")
                 return False
