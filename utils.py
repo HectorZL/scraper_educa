@@ -39,20 +39,64 @@ def obtener_materia_usuario(grado_seleccionado, jornada):
     print(f"\nMaterias disponibles para {grado_seleccionado} - Jornada {jornada}:")
     materias_grado = grados_y_materias[grado_seleccionado]
     
+    # Llamar a la función de múltiples materias pero devolver solo la primera
+    materias_seleccionadas = obtener_materias_usuario(grado_seleccionado, jornada, multiple=False)
+    return materias_seleccionadas[0] if materias_seleccionadas else None
+
+def obtener_materias_usuario(grado_seleccionado, jornada, multiple=True):
+    """Muestra las materias disponibles para el grado seleccionado y permite seleccionar una o varias.
+    
+    Args:
+        grado_seleccionado: Grado seleccionado por el usuario
+        jornada: Jornada seleccionada (MATUTINA/VESPERTINA)
+        multiple: Si es True, permite seleccionar múltiples materias. Si es False, solo una.
+    
+    Returns:
+        Lista de diccionarios con las materias seleccionadas, cada una con nombre y jornada.
+    """
+    print(f"\nMaterias disponibles para {grado_seleccionado} - Jornada {jornada}:")
+    materias_grado = grados_y_materias[grado_seleccionado]
+    
+    # Mostrar las materias disponibles
     for idx, materia in enumerate(materias_grado, 1):
         print(f"{idx}. {materia}")
     
     while True:
         try:
-            seleccion = int(input("\nIngrese el número correspondiente a la materia: "))
-            if 1 <= seleccion <= len(materias_grado):
-                return {
-                    'nombre': materias_grado[seleccion - 1],
-                    'jornada': jornada
-                }
-            print("Número fuera de rango. Intente de nuevo.")
+            if multiple:
+                print("\nIngrese los números de las materias separados por comas (ejemplo: 1,3,5)")
+                print("O ingrese 't' para seleccionar todas las materias")
+                seleccion = input("Selección: ").strip()
+                
+                if seleccion.lower() == 't':
+                    # Seleccionar todas las materias
+                    return [{'nombre': m, 'jornada': jornada} for m in materias_grado]
+                
+                # Procesar múltiples selecciones
+                try:
+                    selecciones = [int(s.strip()) for s in seleccion.split(',')]
+                    if all(1 <= s <= len(materias_grado) for s in selecciones):
+                        return [
+                            {'nombre': materias_grado[s-1], 'jornada': jornada}
+                            for s in sorted(set(selecciones))  # Eliminar duplicados y ordenar
+                        ]
+                    print("Algunos números están fuera de rango. Intente de nuevo.")
+                except ValueError:
+                    print("Entrada no válida. Ingrese números separados por comas.")
+            else:
+                # Comportamiento para selección única (compatibilidad con código existente)
+                seleccion = int(input("\nIngrese el número correspondiente a la materia: "))
+                if 1 <= seleccion <= len(materias_grado):
+                    return [{
+                        'nombre': materias_grado[seleccion - 1],
+                        'jornada': jornada
+                    }]
+                print("Número fuera de rango. Intente de nuevo.")
+                
         except ValueError:
             print("Entrada no válida. Ingrese un número.")
+        except Exception as e:
+            print(f"Error: {e}. Intente nuevamente.")
 
 def get_user_data_dir():
     """Obtiene el directorio de datos de usuario de Microsoft Edge."""
