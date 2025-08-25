@@ -464,7 +464,7 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
         trimestre_num: Número de trimestre (1-3)
         grado_seleccionado: Grado seleccionado (ej: '2do', '3ro', etc.)
     """
-    def procesar_pagina_actual():
+    def procesar_pagina_actual(trimestre_num):
         # Obtener todas las filas de estudiantes
         rows = page.query_selector_all('table tbody tr')
         print(f"Encontrados {len(rows)} estudiantes en la página actual")
@@ -501,48 +501,152 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
                 
                 print("  - Haciendo clic en 'Seleccionar'...")
                 try:
-                    # Hacer clic usando coordenadas para mayor confiabilidad
-                    select_button.click()
-                    # Esperar a que la página responda
+                    # Hacer clic usando JavaScript para mayor confiabilidad
+                    page.evaluate('''(button) => {
+                        button.scrollIntoView({behavior: 'smooth', block: 'center'});
+                        button.click();
+                    }''', select_button)
                     page.wait_for_load_state('networkidle')
-                    time.sleep(2)  # Espera adicional para asegurar la carga
+                    time.sleep(2)
                 except Exception as e:
                     print(f"  - Error al hacer clic en Seleccionar: {str(e)}")
-                    # Intentar recuperar la página actual
                     page.reload()
                     page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
                     continue
                 
-                # Aquí iría el resto del código para procesar al estudiante
+                # Seleccionar el trimestre
+                try:
+                    print("  - Seleccionando trimestre...")
+                    # Esperar a que el selector de trimestre esté disponible
+                    page.wait_for_selector('select#trimestreSeleccionado', state='visible', timeout=5000)
+                    
+                    # Seleccionar el trimestre usando el texto exacto
+                    trimestre_texto = f"TRIMESTRE {trimestre_num}"
+                    page.select_option('select#trimestreSeleccionado', label=trimestre_texto)
+                    time.sleep(1)  # Esperar a que se actualice el formulario
+                    
+                    # Verificar que se haya seleccionado correctamente
+                    selected_trimestre = page.evaluate('''() => {
+                        const select = document.querySelector('select#trimestreSeleccionado');
+                        return select ? select.options[select.selectedIndex].text.trim() : '';
+                    }''')
+                    
+                    if not selected_trimestre.endswith(str(trimestre_num)):
+                        print(f"    - Error al seleccionar el trimestre: seleccionado '{selected_trimestre}', esperado '{trimestre_texto}'")
+                        raise Exception("Error al seleccionar el trimestre")
+                    
+                    print(f"    - {trimestre_texto} seleccionado correctamente")
+                    
+                except Exception as e:
+                    print(f"    - Error al seleccionar el trimestre: {str(e)}")
+                    # Tomar captura de pantalla para depuración
+                    try:
+                        page.screenshot(path=f'error_trimestre_{idx}.png')
+                    except:
+                        pass
+                    # Volver a la lista de estudiantes
+                    try_volver()
+                    continue
+                
+                # Procesar los dropdowns de SIEMPRE
+                try:
+                    print("  - Procesando opciones del formulario...")
+                    # Esperar a que los dropdowns estén visibles
+                    page.wait_for_selector('select.form-control.wide-select', state='visible', timeout=5000)
+                    
+                    # Seleccionar SIEMPRE en todos los dropdowns
+                    dropdowns = page.query_selector_all('select.form-control.wide-select')
+                    if not dropdowns:
+                        print("    - No se encontraron dropdowns para llenar")
+                    else:
+                        for i, dropdown in enumerate(dropdowns, 1):
+                            try:
+                                # Verificar si el dropdown está habilitado
+                                if not dropdown.is_enabled():
+                                    print(f"    - Dropdown {i} está deshabilitado, omitiendo...")
+                                    continue
+                                    
+                                # Verificar opciones disponibles
+                                options = dropdown.query_selector_all('option')
+                                if len(options) <= 1:  # Solo tiene 'Seleccione una opción'
+                                    print(f"    - Dropdown {i} no tiene opciones válidas")
+                                    continue
+                                
+                                # Seleccionar SIEMPRE (value="17")
+                                dropdown.select_option(value="17")
+                                print(f"    - Dropdown {i}: SIEMPRE seleccionado")
+                                time.sleep(0.3)  # Pequeña pausa entre interacciones
+                                
+                            except Exception as e:
+                                print(f"    - Error en dropdown {i}: {str(e)}")
+                                continue
+                    
+                    # Hacer clic en Guardar si el botón está habilitado
+                    save_button = page.wait_for_selector('button.btn-success:has-text(\'Guardar\')', state='visible', timeout=5000)
+                    if save_button and save_button.is_enabled():
+                        print("  - Guardando cambios...")
+                        # Hacer clic usando JavaScript para evitar problemas de visibilidad
+                        page.evaluate('''(btn) => {
+                            btn.scrollIntoView({behavior: 'smooth', block: 'center'});
+                            btn.click();
+                        }''', save_button)
+                        time.sleep(2)  # Esperar a que se guarde
+                        
+                        # Verificar si se guardó correctamente
+                        try:
+                            page.wait_for_selector('.alert-success', timeout=3000)
+                            print("    - Cambios guardados exitosamente")
+                        except:
+                            print("    - No se pudo confirmar el guardado, continuando...")
+                    else:
+                        print("  - El botón Guardar no está disponible")
+                
+                except Exception as e:
+                    print(f"    - Error al procesar el formulario: {str(e)}")
+                    # Tomar captura de pantalla para depuración
+                    try:
+                        page.screenshot(path=f'error_formulario_{idx}.png')
+                    except:
+                        pass
                 
                 # Volver a la lista de estudiantes
-                try:
-                    back_button = page.wait_for_selector('button.btn-warning:has-text(\'Volver\')', timeout=10000)
-                    if back_button:
-                        back_button.click()
-                        # Esperar a que se recargue la lista
-                        page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
-                        time.sleep(1)  # Pequeña pausa para estabilidad
-                except Exception as e:
-                    print(f"  - Error al volver: {str(e)}")
-                    # Si hay error al volver, recargar la página
-                    page.goto(page.url)
-                    page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                if not try_volver():
                     return False
                 
             except Exception as e:
                 print(f"Error al procesar estudiante: {str(e)}")
                 import traceback
                 traceback.print_exc()
-                # Intentar recuperar la página actual
-                try:
-                    page.reload()
-                    page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
-                except:
-                    pass
+                if not try_volver():
+                    return False
                 continue
         
         return True
+    
+    def try_volver():
+        """Intenta volver a la lista de estudiantes"""
+        try:
+            back_button = page.wait_for_selector('button.btn-warning:has-text(\'Volver\')', timeout=10000)
+            if back_button:
+                # Hacer clic usando JavaScript para mayor confiabilidad
+                page.evaluate('''(btn) => {
+                    btn.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    btn.click();
+                }''', back_button)
+                # Esperar a que la tabla de estudiantes esté visible
+                page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                time.sleep(1)
+                return True
+        except Exception as e:
+            print(f"  - Error al volver a la lista: {str(e)}")
+            try:
+                # Si falla, intentar recargar la página
+                page.reload()
+                page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                return True
+            except:
+                return False
+        return False
 
     try:
         print(f"\n=== PROCESANDO MATERIA: CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA ===")
@@ -553,74 +657,80 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
         print("Tabla de estudiantes cargada correctamente")
         
         # Procesar la primera página
-        if not procesar_pagina_actual():
+        if not procesar_pagina_actual(trimestre_num):
             return False
         
         # Verificar si hay paginación
-        pagination = page.query_selector('.row.justify-content-center')
-        if not pagination:
-            print("No se encontró control de paginación. Procesamiento completado.")
-            return True
-            
-        # Obtener información de paginación
-        page_info = page.query_selector('.row.justify-content-center span')
-        if not page_info:
-            print("No se pudo obtener información de paginación.")
-            return True
-            
-        page_text = page_info.inner_text().strip()
-        if 'de' not in page_text:
-            print("Formato de paginación no reconocido.")
-            return True
-            
         try:
-            current_page = int(page_text.split()[1])
-            total_pages = int(page_text.split()[-1])
-            print(f"Página {current_page} de {total_pages}")
-            
-            # Procesar páginas restantes
-            while current_page < total_pages:
-                # Buscar el botón de siguiente página
-                next_buttons = page.query_selector_all('.row.justify-content-center button')
-                next_button = None
+            pagination = page.wait_for_selector('.row.justify-content-center', timeout=3000)
+            if not pagination:
+                print("No se encontró control de paginación. Procesamiento completado.")
+                return True
                 
-                for btn in next_buttons:
-                    btn_text = btn.inner_text().strip().lower()
-                    if 'siguiente' in btn_text and 'disabled' not in (btn.get_attribute('class') or ''):
-                        next_button = btn
+            # Obtener información de paginación
+            page_info = page.query_selector('.row.justify-content-center span')
+            if not page_info:
+                print("No se pudo obtener información de paginación.")
+                return True
+                
+            page_text = page_info.inner_text().strip()
+            if 'de' not in page_text:
+                print("Formato de paginación no reconocido.")
+                return True
+                
+            try:
+                current_page = int(page_text.split()[1])
+                total_pages = int(page_text.split()[-1])
+                print(f"Página {current_page} de {total_pages}")
+                
+                # Procesar páginas restantes
+                while current_page < total_pages:
+                    # Buscar el botón de siguiente página
+                    next_buttons = page.query_selector_all('.row.justify-content-center button')
+                    next_button = None
+                    
+                    for btn in next_buttons:
+                        btn_text = btn.inner_text().strip().lower()
+                        if 'siguiente' in btn_text and 'disabled' not in (btn.get_attribute('class') or ''):
+                            next_button = btn
+                            break
+                    
+                    if not next_button:
+                        print("No se encontró el botón de siguiente página.")
                         break
-                
-                if not next_button:
-                    print("No se encontró el botón de siguiente página.")
-                    break
-                
-                print(f"\nNavegando a la página {current_page + 1} de {total_pages}...")
-                next_button.click()
-                
-                # Esperar a que cargue la nueva página
-                page.wait_for_load_state('networkidle')
-                time.sleep(2)  # Espera adicional para asegurar la carga
-                
-                # Verificar que la página haya cambiado
-                new_page_info = page.query_selector('.row.justify-content-center span')
-                if not new_page_info:
-                    print("No se pudo verificar el cambio de página.")
-                    break
                     
-                new_page_text = new_page_info.inner_text().strip()
-                if str(current_page + 1) not in new_page_text:
-                    print("No se pudo confirmar el cambio de página. Continuando de todos modos...")
-                
-                # Procesar la página actual
-                if not procesar_pagina_actual():
-                    break
+                    print(f"\nNavegando a la página {current_page + 1} de {total_pages}...")
+                    # Hacer clic usando JavaScript para mayor confiabilidad
+                    page.evaluate('''(btn) => {
+                        btn.scrollIntoView({behavior: 'smooth', block: 'center'});
+                        btn.click();
+                    }''', next_button)
                     
-                current_page += 1
-                
+                    # Esperar a que se cargue la nueva página
+                    try:
+                        page.wait_for_load_state('networkidle')
+                        # Esperar a que la tabla se actualice verificando que el número de página cambió
+                        page.wait_for_function(f'''() => {{
+                            const pageInfo = document.querySelector('.row.justify-content-center span');
+                            return pageInfo && pageInfo.textContent.includes('{current_page + 1}');
+                        }}''', timeout=10000)
+                        time.sleep(1)  # Espera adicional para asegurar la carga
+                    except Exception as e:
+                        print(f"  - No se pudo confirmar el cambio de página: {str(e)}")
+                    
+                    # Procesar la página actual
+                    if not procesar_pagina_actual(trimestre_num):
+                        break
+                        
+                    current_page += 1
+                    
+            except Exception as e:
+                print(f"Error al manejar la paginación: {str(e)}")
+                import traceback
+                traceback.print_exc()
+        
         except Exception as e:
-            print(f"Error al manejar la paginación: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error al verificar paginación: {str(e)}")
         
         print("\n=== Proceso de Cívica completado ===")
         return True
