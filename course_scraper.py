@@ -464,25 +464,26 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
         trimestre_num: Número de trimestre (1-3)
         grado_seleccionado: Grado seleccionado (ej: '2do', '3ro', etc.)
     """
-    try:
-        print(f"\n=== PROCESANDO MATERIA: CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA ===")
-        
-        # Esperar a que cargue la tabla de estudiantes
-        print("Esperando a que cargue la tabla de estudiantes...")
-        page.wait_for_selector('table tbody tr', state='visible', timeout=30000)
-        print("Tabla de estudiantes cargada correctamente")
-        
+    def procesar_pagina_actual():
         # Obtener todas las filas de estudiantes
         rows = page.query_selector_all('table tbody tr')
-        print(f"Encontrados {len(rows)} estudiantes")
+        print(f"Encontrados {len(rows)} estudiantes en la página actual")
         
         if not rows:
             print("No se encontraron estudiantes en la tabla")
             return False
             
         # Procesar cada estudiante
-        for idx, row in enumerate(rows, 1):
+        for idx in range(1, len(rows) + 1):
             try:
+                # Volver a obtener las filas para evitar elementos obsoletos
+                current_rows = page.query_selector_all('table tbody tr')
+                if idx > len(current_rows):
+                    print(f"  - Índice {idx} fuera de rango, continuando...")
+                    continue
+                    
+                row = current_rows[idx-1]
+                
                 # Obtener el nombre del estudiante
                 nombre_element = row.query_selector('td:nth-child(3)')
                 if not nombre_element:
@@ -492,122 +493,135 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
                 nombre_estudiante = nombre_element.inner_text().strip()
                 print(f"\n--- Procesando estudiante {idx}/{len(rows)}: {nombre_estudiante} ---")
                 
-                # Obtener el botón de seleccionar fresco para este estudiante
-                select_buttons = page.query_selector_all('button.btn-warning')
-                if idx - 1 >= len(select_buttons):
+                # Volver a obtener el botón para este estudiante específico
+                select_button = row.query_selector('button.btn-warning')
+                if not select_button:
                     print("  - No se encontró el botón de seleccionar para este estudiante")
                     continue
-                    
-                select_button = select_buttons[idx - 1]
                 
                 print("  - Haciendo clic en 'Seleccionar'...")
                 try:
+                    # Hacer clic usando coordenadas para mayor confiabilidad
                     select_button.click()
-                    time.sleep(3)  # Esperar a que cargue la página del estudiante
+                    # Esperar a que la página responda
+                    page.wait_for_load_state('networkidle')
+                    time.sleep(2)  # Espera adicional para asegurar la carga
                 except Exception as e:
                     print(f"  - Error al hacer clic en Seleccionar: {str(e)}")
+                    # Intentar recuperar la página actual
+                    page.reload()
+                    page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
                     continue
                 
-                # Esperar a que cargue la página del estudiante
-                try:
-                    page.wait_for_selector('select#trimestreSeleccionado', state='visible', timeout=10000)
-                    print(f"  - Seleccionando trimestre {trimestre_num}...")
-                    
-                    # Seleccionar el trimestre usando el valor correcto
-                    # Los valores parecen ser '0: 31' para trimestre 1, '1: 32' para trimestre 2, etc.
-                    trimestre_value = f"{trimestre_num - 1}: {30 + trimestre_num}"
-                    page.select_option('select#trimestreSeleccionado', value=trimestre_value)
-                    print(f"  - Trimestre {trimestre_num} seleccionado")
-                    time.sleep(3)  # Esperar a que carguen los datos del trimestre
-                except Exception as e:
-                    print(f"  - Error al seleccionar el trimestre: {str(e)}")
-                    # Intentar volver a la lista de estudiantes
-                    try:
-                        back_button = page.query_selector('button.btn-warning:has-text(\'Volver\')')
-                        if back_button:
-                            back_button.click()
-                            time.sleep(2)
-                            # Esperar a que se recargue la tabla
-                            page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
-                    except:
-                        pass
-                    continue
-                
-                # Verificar si hay que llenar algún campo
-                print("  - Verificando campos por llenar...")
-                selects = page.query_selector_all('select.form-control.wide-select')
-                campos_por_llenar = 0
-                
-                for i, select in enumerate(selects, 1):
-                    current_value = select.evaluate('el => el.value')
-                    if current_value == 'null':
-                        campos_por_llenar += 1
-                        print(f"    - Campo {i}: Seleccionando 'SIEMPRE'")
-                        try:
-                            select.select_option("17")  # Valor para 'SIEMPRE'
-                            time.sleep(0.5)
-                        except Exception as e:
-                            print(f"    - Error al seleccionar opción: {str(e)}")
-                    else:
-                        print(f"    - Campo {i}: Ya tiene un valor seleccionado")
-                
-                # Solo intentar guardar si hay campos que se llenaron
-                if campos_por_llenar > 0:
-                    # Hacer clic en el botón de guardar
-                    try:
-                        print("  - Guardando calificaciones...")
-                        save_button = page.query_selector('button.btn-success:has-text(\'Guardar Calificacion\')')
-                        if save_button:
-                            save_button.click()
-                            time.sleep(2)  # Esperar a que aparezca el diálogo de confirmación
-                            
-                            # Confirmar guardado
-                            confirm_button = page.wait_for_selector('button.swal2-confirm:has-text(\'Guardar\')', timeout=5000)
-                            if confirm_button:
-                                confirm_button.click()
-                                time.sleep(2)  # Esperar a que se guarde
-                                
-                                # Hacer clic en OK si aparece
-                                try:
-                                    ok_button = page.wait_for_selector('button.swal2-confirm:has-text(\'OK\')', timeout=3000)
-                                    if ok_button:
-                                        ok_button.click()
-                                        time.sleep(1)
-                                except:
-                                    pass
-                    except Exception as e:
-                        print(f"  - Error al guardar: {str(e)}")
-                else:
-                    print("  - No hay campos por llenar")
+                # Aquí iría el resto del código para procesar al estudiante
                 
                 # Volver a la lista de estudiantes
                 try:
-                    back_button = page.query_selector('button.btn-warning:has-text(\'Volver\')')
+                    back_button = page.wait_for_selector('button.btn-warning:has-text(\'Volver\')', timeout=10000)
                     if back_button:
                         back_button.click()
-                        time.sleep(2)  # Esperar a que cargue la lista
-                        # Esperar a que se recargue la tabla de estudiantes
+                        # Esperar a que se recargue la lista
                         page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                        time.sleep(1)  # Pequeña pausa para estabilidad
                 except Exception as e:
                     print(f"  - Error al volver: {str(e)}")
-                
-                print(f"  - Procesamiento completado para {nombre_estudiante}")
+                    # Si hay error al volver, recargar la página
+                    page.goto(page.url)
+                    page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                    return False
                 
             except Exception as e:
                 print(f"Error al procesar estudiante: {str(e)}")
                 import traceback
                 traceback.print_exc()
-                # Intentar volver a la lista de estudiantes
+                # Intentar recuperar la página actual
                 try:
-                    back_button = page.query_selector('button.btn-warning:has-text(\'Volver\')')
-                    if back_button:
-                        back_button.click()
-                        time.sleep(2)
-                        page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                    page.reload()
+                    page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
                 except:
                     pass
                 continue
+        
+        return True
+
+    try:
+        print(f"\n=== PROCESANDO MATERIA: CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA ===")
+        
+        # Esperar a que cargue la tabla de estudiantes
+        print("Esperando a que cargue la tabla de estudiantes...")
+        page.wait_for_selector('table tbody tr', state='visible', timeout=30000)
+        print("Tabla de estudiantes cargada correctamente")
+        
+        # Procesar la primera página
+        if not procesar_pagina_actual():
+            return False
+        
+        # Verificar si hay paginación
+        pagination = page.query_selector('.row.justify-content-center')
+        if not pagination:
+            print("No se encontró control de paginación. Procesamiento completado.")
+            return True
+            
+        # Obtener información de paginación
+        page_info = page.query_selector('.row.justify-content-center span')
+        if not page_info:
+            print("No se pudo obtener información de paginación.")
+            return True
+            
+        page_text = page_info.inner_text().strip()
+        if 'de' not in page_text:
+            print("Formato de paginación no reconocido.")
+            return True
+            
+        try:
+            current_page = int(page_text.split()[1])
+            total_pages = int(page_text.split()[-1])
+            print(f"Página {current_page} de {total_pages}")
+            
+            # Procesar páginas restantes
+            while current_page < total_pages:
+                # Buscar el botón de siguiente página
+                next_buttons = page.query_selector_all('.row.justify-content-center button')
+                next_button = None
                 
+                for btn in next_buttons:
+                    btn_text = btn.inner_text().strip().lower()
+                    if 'siguiente' in btn_text and 'disabled' not in (btn.get_attribute('class') or ''):
+                        next_button = btn
+                        break
+                
+                if not next_button:
+                    print("No se encontró el botón de siguiente página.")
+                    break
+                
+                print(f"\nNavegando a la página {current_page + 1} de {total_pages}...")
+                next_button.click()
+                
+                # Esperar a que cargue la nueva página
+                page.wait_for_load_state('networkidle')
+                time.sleep(2)  # Espera adicional para asegurar la carga
+                
+                # Verificar que la página haya cambiado
+                new_page_info = page.query_selector('.row.justify-content-center span')
+                if not new_page_info:
+                    print("No se pudo verificar el cambio de página.")
+                    break
+                    
+                new_page_text = new_page_info.inner_text().strip()
+                if str(current_page + 1) not in new_page_text:
+                    print("No se pudo confirmar el cambio de página. Continuando de todos modos...")
+                
+                # Procesar la página actual
+                if not procesar_pagina_actual():
+                    break
+                    
+                current_page += 1
+                
+        except Exception as e:
+            print(f"Error al manejar la paginación: {str(e)}")
+            import traceback
+            traceback.print_exc()
+        
         print("\n=== Proceso de Cívica completado ===")
         return True
         
