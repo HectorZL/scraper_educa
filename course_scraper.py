@@ -35,38 +35,61 @@ def normalize_text(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def seleccionar_trimestre(page, trimestre_num, grado_seleccionado):
+def seleccionar_trimestre(page, trimestre_num, grado_seleccionado, es_civica=False):
     """Selecciona el trimestre según el grado.
     
     Args:
         page: Página de Playwright
         trimestre_num: Número de trimestre (1-3)
         grado_seleccionado: Grado seleccionado (ej: 'INICIAL', '1RO', '2DO', etc.)
+        es_civica: Indica si es la materia de Cívica que requiere flujo especial
     """
     try:
         print(f"Intentando seleccionar trimestre {trimestre_num} para {grado_seleccionado}...")
         
+        # Si es Cívica, no intentamos seleccionar el trimestre aquí
+        # ya que se hará después de hacer clic en el estudiante
+        if es_civica:
+            print("  - Es materia de Cívica, el trimestre se seleccionará después")
+            return True
+            
         # Determinar si es un grado que usa la nueva interfaz (2do-7mo)
         es_grado_nuevo = any(str(grado) in str(grado_seleccionado) for grado in range(2, 8))
         
         if es_grado_nuevo:
-            # Nueva interfaz con pestañas
-            tab_selector = f'//a[contains(@class, "nav-link") and contains(., "TRIMESTRE {trimestre_num}")]'
-            page.wait_for_selector(f'xpath={tab_selector}', state="visible", timeout=10000)
-            page.click(f'xpath={tab_selector}')
-            print(f"Trimestre {trimestre_num} seleccionado correctamente (nueva interfaz)")
+            # Para la nueva interfaz (2do-7mo)
+            try:
+                # Esperar a que cargue el selector de trimestre
+                selector = f"//a[contains(@class, 'nav-link') and contains(., 'TRIMESTRE {trimestre_num}')]"
+                print(f"  - Buscando selector: {selector}")
+                
+                # Hacer clic en el trimestre
+                page.click(selector, timeout=10000)
+                print(f"  - Seleccionado TRIMESTRE {trimestre_num}")
+                time.sleep(2)  # Esperar a que cargue
+                return True
+                
+            except Exception as e:
+                print(f"Error al seleccionar trimestre {trimestre_num}: {str(e)}")
+                return False
         else:
-            # Antigua interfaz con dropdown
-            selector = 'select[name="trimestreSeleccionado"]'
-            page.wait_for_selector(selector, state="visible", timeout=10000)
-            page.select_option(selector, label=f"TRIMESTRE {trimestre_num}", timeout=10000)
-            print(f"Trimestre {trimestre_num} seleccionado correctamente (interfaz antigua)")
-        
-        time.sleep(2)  # Esperar a que cargue el contenido
-        return True
-        
+            # Para la interfaz antigua (Inicial y 1ro)
+            try:
+                # Hacer clic en el dropdown de trimestres
+                page.click("select#trimestre", timeout=10000)
+                
+                # Seleccionar el trimestre (el valor es el mismo que el número)
+                page.select_option("select#trimestre", str(trimestre_num))
+                print(f"  - Seleccionado TRIMESTRE {trimestre_num}")
+                time.sleep(2)  # Esperar a que cargue
+                return True
+                
+            except Exception as e:
+                print(f"Error al seleccionar trimestre {trimestre_num}: {str(e)}")
+                return False
+                
     except Exception as e:
-        print(f"Error al seleccionar trimestre {trimestre_num}: {e}")
+        print(f"Error inesperado al seleccionar trimestre: {str(e)}")
         return False
 
 def seleccionar_materia(page, nombre, jornada, timeout=20000):
@@ -432,141 +455,367 @@ def procesar_todos_los_estudiantes(page, ambito, trimestre_num, grado_selecciona
         mapeo_calificaciones=mapeo_calificaciones
     )
 
+def procesar_civica(page, trimestre_num, grado_seleccionado):
+    """
+    Procesa la materia de Cívica de manera especial para grados 2-7.
+    
+    Args:
+        page: Página de Playwright
+        trimestre_num: Número de trimestre (1-3)
+        grado_seleccionado: Grado seleccionado (ej: '2do', '3ro', etc.)
+    """
+    try:
+        print(f"\n=== PROCESANDO MATERIA: CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA ===")
+        
+        # Esperar a que cargue la tabla de estudiantes
+        print("Esperando a que cargue la tabla de estudiantes...")
+        page.wait_for_selector('table tbody tr', state='visible', timeout=30000)
+        print("Tabla de estudiantes cargada correctamente")
+        
+        # Obtener todas las filas de estudiantes
+        rows = page.query_selector_all('table tbody tr')
+        print(f"Encontrados {len(rows)} estudiantes")
+        
+        if not rows:
+            print("No se encontraron estudiantes en la tabla")
+            return False
+            
+        # Procesar cada estudiante
+        for idx, row in enumerate(rows, 1):
+            try:
+                # Obtener el nombre del estudiante
+                nombre_element = row.query_selector('td:nth-child(3)')
+                if not nombre_element:
+                    print("  - No se pudo encontrar el elemento del nombre")
+                    continue
+                    
+                nombre_estudiante = nombre_element.inner_text().strip()
+                print(f"\n--- Procesando estudiante {idx}/{len(rows)}: {nombre_estudiante} ---")
+                
+                # Obtener el botón de seleccionar fresco para este estudiante
+                select_buttons = page.query_selector_all('button.btn-warning')
+                if idx - 1 >= len(select_buttons):
+                    print("  - No se encontró el botón de seleccionar para este estudiante")
+                    continue
+                    
+                select_button = select_buttons[idx - 1]
+                
+                print("  - Haciendo clic en 'Seleccionar'...")
+                try:
+                    select_button.click()
+                    time.sleep(3)  # Esperar a que cargue la página del estudiante
+                except Exception as e:
+                    print(f"  - Error al hacer clic en Seleccionar: {str(e)}")
+                    continue
+                
+                # Esperar a que cargue la página del estudiante
+                try:
+                    page.wait_for_selector('select#trimestreSeleccionado', state='visible', timeout=10000)
+                    print(f"  - Seleccionando trimestre {trimestre_num}...")
+                    
+                    # Seleccionar el trimestre usando el valor correcto
+                    # Los valores parecen ser '0: 31' para trimestre 1, '1: 32' para trimestre 2, etc.
+                    trimestre_value = f"{trimestre_num - 1}: {30 + trimestre_num}"
+                    page.select_option('select#trimestreSeleccionado', value=trimestre_value)
+                    print(f"  - Trimestre {trimestre_num} seleccionado")
+                    time.sleep(3)  # Esperar a que carguen los datos del trimestre
+                except Exception as e:
+                    print(f"  - Error al seleccionar el trimestre: {str(e)}")
+                    # Intentar volver a la lista de estudiantes
+                    try:
+                        back_button = page.query_selector('button.btn-warning:has-text(\'Volver\')')
+                        if back_button:
+                            back_button.click()
+                            time.sleep(2)
+                            # Esperar a que se recargue la tabla
+                            page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                    except:
+                        pass
+                    continue
+                
+                # Verificar si hay que llenar algún campo
+                print("  - Verificando campos por llenar...")
+                selects = page.query_selector_all('select.form-control.wide-select')
+                campos_por_llenar = 0
+                
+                for i, select in enumerate(selects, 1):
+                    current_value = select.evaluate('el => el.value')
+                    if current_value == 'null':
+                        campos_por_llenar += 1
+                        print(f"    - Campo {i}: Seleccionando 'SIEMPRE'")
+                        try:
+                            select.select_option("17")  # Valor para 'SIEMPRE'
+                            time.sleep(0.5)
+                        except Exception as e:
+                            print(f"    - Error al seleccionar opción: {str(e)}")
+                    else:
+                        print(f"    - Campo {i}: Ya tiene un valor seleccionado")
+                
+                # Solo intentar guardar si hay campos que se llenaron
+                if campos_por_llenar > 0:
+                    # Hacer clic en el botón de guardar
+                    try:
+                        print("  - Guardando calificaciones...")
+                        save_button = page.query_selector('button.btn-success:has-text(\'Guardar Calificacion\')')
+                        if save_button:
+                            save_button.click()
+                            time.sleep(2)  # Esperar a que aparezca el diálogo de confirmación
+                            
+                            # Confirmar guardado
+                            confirm_button = page.wait_for_selector('button.swal2-confirm:has-text(\'Guardar\')', timeout=5000)
+                            if confirm_button:
+                                confirm_button.click()
+                                time.sleep(2)  # Esperar a que se guarde
+                                
+                                # Hacer clic en OK si aparece
+                                try:
+                                    ok_button = page.wait_for_selector('button.swal2-confirm:has-text(\'OK\')', timeout=3000)
+                                    if ok_button:
+                                        ok_button.click()
+                                        time.sleep(1)
+                                except:
+                                    pass
+                    except Exception as e:
+                        print(f"  - Error al guardar: {str(e)}")
+                else:
+                    print("  - No hay campos por llenar")
+                
+                # Volver a la lista de estudiantes
+                try:
+                    back_button = page.query_selector('button.btn-warning:has-text(\'Volver\')')
+                    if back_button:
+                        back_button.click()
+                        time.sleep(2)  # Esperar a que cargue la lista
+                        # Esperar a que se recargue la tabla de estudiantes
+                        page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                except Exception as e:
+                    print(f"  - Error al volver: {str(e)}")
+                
+                print(f"  - Procesamiento completado para {nombre_estudiante}")
+                
+            except Exception as e:
+                print(f"Error al procesar estudiante: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                # Intentar volver a la lista de estudiantes
+                try:
+                    back_button = page.query_selector('button.btn-warning:has-text(\'Volver\')')
+                    if back_button:
+                        back_button.click()
+                        time.sleep(2)
+                        page.wait_for_selector('table tbody tr', state='visible', timeout=10000)
+                except:
+                    pass
+                continue
+                
+        print("\n=== Proceso de Cívica completado ===")
+        return True
+        
+    except Exception as e:
+        print(f"Error en procesar_civica: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
     from utils import obtener_materias_usuario
     
-    # Verificar si es un grado que usa mapeo de calificaciones (2do-7mo)
-    usa_mapeo_calificaciones = any(grado in str(grado_seleccionado) for grado in ['2', '3', '4', '5', '6', '7'])
-    
-    # Cargar el mapeo de calificaciones si corresponde
-    mapeo_calificaciones = None
-    if usa_mapeo_calificaciones:
-        print("\n=== CARGANDO MAPEO DE CALIFICACIONES ===")
-        mapeo_calificaciones = crear_mapa_calificaciones('sb.xlsx')
-        if mapeo_calificaciones:
-            print(f"Se cargaron calificaciones para {len(mapeo_calificaciones)} estudiantes")
-        else:
-            print("No se pudo cargar el mapeo de calificaciones. Usando valores por defecto.")
-    
-    # Obtener las materias seleccionadas por el usuario
-    materias = obtener_materias_usuario(grado_seleccionado, jornada)
-    if not materias:
-        print("No se seleccionaron materias. Saliendo...")
-        return False
-
-    opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado/grados_personalizados): ").strip().lower()
-    accion = input("¿Qué acción desea realizar? (llenar/borrar): ").strip().lower()
-    
-    trimestres_seleccionados = obtener_trimestres_usuario()
-    print(f"Trimestres seleccionados: {trimestres_seleccionados}")
-
-    # Procesar cada materia seleccionada
-    for materia in materias:
-        print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
+    try:
+        # Obtener las materias del usuario
+        materias = obtener_materias_usuario(grado_seleccionado, jornada)
         
-        # Navegar a la página principal de calificaciones
-        page.goto("https://academico.educarecuador.gob.ec/academico-servicios/pages/calificacion_ordinaria")
-        page.wait_for_load_state('networkidle')
+        if not materias:
+            print("No se encontraron materias para el grado y jornada seleccionados.")
+            return False
+            
+        # Mostrar las materias disponibles
+        print("\nMaterias disponibles para", grado_seleccionado, "- Jornada", jornada.upper() + ":")
+        for i, materia in enumerate(materias, 1):
+            print(f"{i}. {materia['nombre']}")
         
-        if not seleccionar_materia(page, materia['nombre'], materia['jornada']):
-            print(f"No se pudo seleccionar la materia {materia['nombre']} - Jornada {materia['jornada']}")
-            continue
-
-        # Solo obtener ámbitos si es grado 1 o inicial
-        ambitos = []
-        if not usa_mapeo_calificaciones:
-            ambitos = obtener_ambitos_usuario(materia)
-            if not ambitos:
-                print(f"No se seleccionaron ámbitos para {materia['nombre']}. Continuando con la siguiente materia...")
-                continue
-            print(f"Ámbitos seleccionados para {materia['nombre']}: {ambitos}")
-        else:
-            # Para grados 2-7, usamos un ámbito genérico ya que el mapeo ya tiene las materias
-            ambitos = [materia['nombre']]
-
-        for trimestre_num in trimestres_seleccionados:
-            print(f"\nSeleccionando Trimestre {trimestre_num}...")
-            if not seleccionar_trimestre(page, trimestre_num, grado_seleccionado):
-                print(f"No se pudo seleccionar el trimestre {trimestre_num}. Continuando con el siguiente...")
-                continue
-
-            for ambito in ambitos:
-                print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
+        # Verificar si hay materias de Cívica (con búsqueda más flexible)
+        materias_civica = [m for m in materias if any(term in m['nombre'].lower() for term in ['civica', 'cívica', 'civico', 'cívico'])]
+        
+        # Si hay materias de Cívica, procesarlas primero
+        if materias_civica:
+            print("\n=== DETECTADA MATERIA DE CÍVICA ===")
+            print("Se procesará automáticamente la materia de Cívica.")
+            
+            for materia in materias_civica:
+                print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
                 
-                if opcion == "todos":
-                    procesar_todos_los_estudiantes(
-                        page, 
-                        ambito, 
-                        trimestre_num,
-                        grado_seleccionado=grado_seleccionado,
-                        accion=accion,
-                        mapeo_calificaciones=mapeo_calificaciones
-                    )
-                elif opcion == "buenos":
-                    procesar_filas(
-                        page, 
-                        ambito, 
-                        trimestre_num,
-                        grado_seleccionado=grado_seleccionado,
-                        nombres_excepciones=nombres_excepciones,
-                        nombres_buenos=nombres_buenos,
-                        nombres_malos=None,
-                        accion=accion,
-                        grupo="buenos",
-                        mapeo_calificaciones=mapeo_calificaciones
-                    )
-                elif opcion == "malos":
-                    procesar_filas(
-                        page, 
-                        ambito, 
-                        trimestre_num,
-                        grado_seleccionado=grado_seleccionado,
-                        nombres_excepciones=nombres_excepciones,
-                        nombres_buenos=None,
-                        nombres_malos=nombres_malos,
-                        accion=accion,
-                        grupo="malos",
-                        mapeo_calificaciones=mapeo_calificaciones
-                    )
-                elif opcion == "personalizado":
-                    procesar_filas(
-                        page, 
-                        ambito, 
-                        trimestre_num,
-                        grado_seleccionado=grado_seleccionado,
-                        nombres_excepciones=nombres_excepciones,
-                        nombres_buenos=None,
-                        nombres_malos=None,
-                        accion=accion,
-                        grupo="personalizado",
-                        mapeo_calificaciones=mapeo_calificaciones
-                    )
-                elif opcion == "grados_personalizados":
-                    from academic_data import personalized_grades
-                    procesar_filas(
-                        page, 
-                        ambito, 
-                        trimestre_num,
-                        grado_seleccionado=grado_seleccionado,
-                        nombres_excepciones=None,
-                        nombres_buenos=list(personalized_grades.keys()),
-                        nombres_malos=None,
-                        accion=accion,
-                        grupo="grados_personalizados",
-                        mapeo_calificaciones=mapeo_calificaciones
-                    )
-                else:
-                    print("Opción no válida. Continuando con la siguiente materia...")
-                    break
+                # Buscar la materia en la página
+                if not seleccionar_materia(page, materia['nombre'], jornada):
+                    print(f"No se pudo encontrar la materia {materia['nombre']}. Continuando con la siguiente...")
+                    continue
                 
-                # Pequeña pausa entre ámbitos
+                # Procesar cada trimestre para Cívica
+                trimestres_input = input("\nIngrese los números de trimestres para Cívica separados por comas (1-3), ejemplo '1,2': ")
+                trimestres = [int(t.strip()) for t in trimestres_input.split(',')]
+                
+                for trimestre_num in trimestres:
+                    print(f"\n=== Procesando Cívica - Trimestre {trimestre_num} ===")
+                    procesar_civica(page, trimestre_num, grado_seleccionado)
+                
+                # Eliminar Cívica de la lista de materias a procesar
+                materias = [m for m in materias if m['nombre'] != materia['nombre']]
+                print("\n=== FINALIZADO PROCESAMIENTO DE CÍVICA ===\n")
+        
+        # Si no quedan más materias, terminar
+        if not materias:
+            print("No hay más materias para procesar.")
+            return True
+            
+        # Preguntar por las demás materias
+        print("\nMaterias restantes para procesar:")
+        for i, materia in enumerate(materias, 1):
+            print(f"{i}. {materia['nombre']}")
+            
+        seleccion = input("\n¿Desea procesar las materias restantes? (s/n): ").lower()
+        if seleccion != 's':
+            print("Proceso cancelado por el usuario.")
+            return False
+            
+        # Procesar las demás materias
+        for i, materia in enumerate(materias, 1):
+            # Verificar si es Cívica (con búsqueda más flexible)
+            es_civica = any(term in materia['nombre'].lower() for term in ['civica', 'cívica', 'civico', 'cívico'])
+            
+            print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
+            
+            # Buscar la materia en la página
+            if not seleccionar_materia(page, materia['nombre'], jornada):
+                print(f"No se pudo encontrar la materia {materia['nombre']}. Continuando con la siguiente...")
+                continue
+            
+            if es_civica:
+                # Procesar Cívica de manera especial
+                trimestres_input = input("\nIngrese los números de trimestres para Cívica separados por comas (1-3), ejemplo '1,2': ")
+                trimestres = [int(t.strip()) for t in trimestres_input.split(',')]
+                
+                for trimestre_num in trimestres:
+                    print(f"\n=== Procesando Cívica - Trimestre {trimestre_num} ===")
+                    procesar_civica(page, trimestre_num, grado_seleccionado)
+                continue
+            
+            # Para materias que no son Cívica
+            accion = input("¿Qué acción desea realizar? (llenar/borrar): ").lower()
+            trimestres_input = input("Ingrese los números de trimestres separados por comas (1-3), ejemplo '1,2': ")
+            trimestres = [int(t.strip()) for t in trimestres_input.split(',')]
+            
+            # Cargar el mapeo de calificaciones si es necesario
+            mapeo_calificaciones = None
+            if accion == 'llenar':
+                mapeo_calificaciones = crear_mapa_calificaciones('sb.xlsx')
+            
+            # Preguntar qué grupo procesar
+            opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado/grados_personalizados): ").lower()
+            
+            for trimestre_num in trimestres:
+                print(f"\nSeleccionando Trimestre {trimestre_num}...")
+                
+                # Seleccionar el trimestre
+                if not seleccionar_trimestre(page, trimestre_num, grado_seleccionado, es_civica=es_civica):
+                    print(f"No se pudo seleccionar el trimestre {trimestre_num}. Continuando con el siguiente...")
+                    continue
+                
+                # Procesar cada ámbito
+                for ambito in obtener_ambitos_usuario():
+                    print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
+                    
+                    if opcion == "todos":
+                        procesar_todos_los_estudiantes(
+                            page, 
+                            ambito, 
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            accion=accion,
+                            mapeo_calificaciones=mapeo_calificaciones
+                        )
+                    elif opcion == "buenos":
+                        procesar_filas(
+                            page, 
+                            ambito, 
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            nombres_excepciones=nombres_excepciones,
+                            nombres_buenos=nombres_buenos,
+                            nombres_malos=None,
+                            accion=accion,
+                            grupo="buenos",
+                            mapeo_calificaciones=mapeo_calificaciones
+                        )
+                    elif opcion == "malos":
+                        procesar_filas(
+                            page, 
+                            ambito, 
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            nombres_excepciones=nombres_excepciones,
+                            nombres_buenos=None,
+                            nombres_malos=nombres_malos,
+                            accion=accion,
+                            grupo="malos",
+                            mapeo_calificaciones=mapeo_calificaciones
+                        )
+                    elif opcion == "personalizado":
+                        procesar_filas(
+                            page, 
+                            ambito, 
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            nombres_excepciones=nombres_excepciones,
+                            nombres_buenos=None,
+                            nombres_malos=None,
+                            accion=accion,
+                            grupo="personalizado",
+                            mapeo_calificaciones=mapeo_calificaciones
+                        )
+                    elif opcion == "grados_personalizados":
+                        from academic_data import personalized_grades
+                        procesar_filas(
+                            page, 
+                            ambito, 
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            nombres_excepciones=None,
+                            nombres_buenos=list(personalized_grades.keys()),
+                            nombres_malos=None,
+                            accion=accion,
+                            grupo="grados_personalizados",
+                            mapeo_calificaciones=mapeo_calificaciones
+                        )
+                    else:
+                        print("Opción no válida. Continuando con la siguiente materia...")
+                        break
+                                
+                    # Pequeña pausa entre ámbitos
+                    time.sleep(1)
+                
+                # Pequeña pausa entre trimestres
                 time.sleep(1)
             
-            # Pequeña pausa entre trimestres
+            # Pequeña pausa entre materias
             time.sleep(1)
         
-        # Pequeña pausa entre materias
-        time.sleep(2)
+        print("\nProceso de scraping finalizado para todas las materias seleccionadas.")
+        
+    except Exception as e:
+        print(f"Error en obtener_ambito_y_scrapear: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
-    print("\nProceso de scraping finalizado para todas las materias seleccionadas.")
-    return True
+def main():
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.newContext()
+        page = context.newPage()
+        
+        grado_seleccionado = input("Ingrese el grado (ej: 1ro, 2do, etc.): ")
+        jornada = input("Ingrese la jornada (ej: Matutina, Vespertina): ")
+        
+        obtener_ambito_y_scrapear(page, grado_seleccionado, jornada)
+
+if __name__ == "__main__":
+    main()
