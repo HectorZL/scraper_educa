@@ -1,3 +1,84 @@
+# Grados y sus respectivas materias
+grados_y_materias = {
+    "INICIAL": [
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "ÁMBITOS DE DESARROLLO Y APRENDIZAJE"
+    ],
+    "1RO": [
+        "CURRÍCULO INTEGRADOR POR ÁMBITOS DE APRENDIZAJE",
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "EDUCACIÓN FÍSICA",
+        "EDUCACIÓN CULTURAL Y ARTÍSTICA"
+    ],
+    "2DO DE EDUCACION GENERAL BASICA": [
+        "LENGUA Y LITERATURA",
+        "MATEMÁTICA",
+        "ESTUDIOS SOCIALES",
+        "CIENCIAS NATURALES",
+        "EDUCACIÓN CULTURAL Y ARTÍSTICA",
+        "EDUCACIÓN FÍSICA",
+        "INGLÉS",
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "ANIMACIÓN A LA LECTURA"
+    ],
+    "3RO DE EDUCACION GENERAL BASICA": [
+        "LENGUA Y LITERATURA",
+        "MATEMÁTICA",
+        "ESTUDIOS SOCIALES",
+        "CIENCIAS NATURALES",
+        "EDUCACIÓN CULTURAL Y ARTÍSTICA",
+        "EDUCACIÓN FÍSICA",
+        "INGLÉS",
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "ANIMACIÓN A LA LECTURA"
+    ],
+    "4TO DE EDUCACION GENERAL BASICA": [
+        "LENGUA Y LITERATURA",
+        "MATEMÁTICA",
+        "ESTUDIOS SOCIALES",
+        "CIENCIAS NATURALES",
+        "EDUCACIÓN CULTURAL Y ARTÍSTICA",
+        "EDUCACIÓN FÍSICA",
+        "INGLÉS",
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "ANIMACIÓN A LA LECTURA"
+    ],
+    "5TO DE EDUCACION GENERAL BASICA": [
+        "LENGUA Y LITERATURA",
+        "MATEMÁTICA",
+        "ESTUDIOS SOCIALES",
+        "CIENCIAS NATURALES",
+        "EDUCACIÓN CULTURAL Y ARTÍSTICA",
+        "EDUCACIÓN FÍSICA",
+        "INGLÉS",
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "ANIMACIÓN A LA LECTURA"
+    ],
+    "6TO DE EDUCACION GENERAL BASICA": [
+        "LENGUA Y LITERATURA",
+        "MATEMÁTICA",
+        "ESTUDIOS SOCIALES",
+        "CIENCIAS NATURALES",
+        "EDUCACIÓN CULTURAL Y ARTÍSTICA",
+        "EDUCACIÓN FÍSICA",
+        "INGLÉS",
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "ANIMACIÓN A LA LECTURA"
+    ],
+    "7MO DE EDUCACION GENERAL BASICA": [
+        "LENGUA Y LITERATURA",
+        "MATEMÁTICA",
+        "ESTUDIOS SOCIALES",
+        "CIENCIAS NATURALES",
+        "EDUCACIÓN CULTURAL Y ARTÍSTICA",
+        "EDUCACIÓN FÍSICA",
+        "INGLÉS",
+        "CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA",
+        "ANIMACIÓN A LA LECTURA"
+    ]
+}
+
+# Mantener compatibilidad con el código existente
 materias = [
     {
         "nombre": "EDUCACIÓN FÍSICA",
@@ -93,7 +174,6 @@ materias = [
     }
 ]
 
-
 trimestres_borrar = {
     1: ("TRIMESTRE 1", "NE"),
     2: ("TRIMESTRE 2", "NE"),
@@ -107,7 +187,7 @@ trimestres_borrar_malos= {
 }
 
 trimestres = {
-    1: ("TRIMESTRE 1", "B+"),
+    1: ("TRIMESTRE 1", "C+"),
     2: ("TRIMESTRE 2", "B+"),
     3: ("TRIMESTRE 3", "A+")
 }
@@ -128,4 +208,42 @@ trimestres_excepciones = {
     1: ("TRIMESTRE 1", "NE"),
     2: ("TRIMESTRE 2", "NE"),
     3: ("TRIMESTRE 3", "NE")
+}
+
+# Personalized student grades
+personalized_grades = {
+    # A- students
+    "COBEÑA GUDIÑO NOAH JONAIKER": "A-",
+    "ESPINOZA JAMA BRIANA ISABELLA": "A-",
+    "LUCAS FIGUEROA ELIF VALENTINA": "A-",
+    "MARCILLO CHILA KEISHA FIORELLA": "A-",  # Updated to match system format
+    "MEJIA ZAMBRANO JAHDIEL ISAAC": "A-",
+    "VALLE ROMERO SARAHI NICOLE": "A-",
+    
+    # B+ students
+    "ARTEAGA MONTES DANNA NARCISA": "B+",
+    "CAGUA CHILA KEYSI ALEJANDRA": "B+",
+    "CEDEÑO DELGADO FERNANDO IZAEL": "B+",
+    "COTERA GARCIA BAYOLETH ISABELLA": "B+",
+    "DÁVILA VERA MÍA SALOMÉ": "B+",
+    "ORTIZ CHAVEZ MELINA LORELY": "B+",
+    "PÀRRAGA OBANDO LEAH MERELIN": "B+",
+    "PUERTAS MERA EDITH SARAI": "B+",
+    "ROBLES ANCHUNDIA AYTHANA VICTORIA": "B+",
+    "TUMBACO DOMINGUEZ SARAI BETSABETH": "B+",
+    "VALENCIA BERMÙDEZ ELENA SOFIA": "B+",
+    "VELIZ ZAMBRANO ALEXANDER RICARDO": "B+",
+    "VERDUGA ARTEAGA DANNA VALENTINA": "B+",
+    "ZAMBRANO ZAMBRANO MARIA JOSE": "B+",
+    
+    # B- students
+    "BENAVIDES SABANDO KEYLER FERNANDO": "B-",
+    "BRAVO CHEME HELI YASU": "B-",
+    "GARCIA GRACIA EITHAN ORLEY": "B-",
+    "GRACIA MARTINEZ KAREN LIXE": "B-",
+    "PINARGOTE ORTIZ MARA PAULETH": "B-",
+    "QUIJIJE PILAMUNGA JHOAN SEBASTIAN": "B-",
+    "SANTANA LOOR ORIANA VALENTINA": "B-",
+    "VELASQUEZ FALCON ASLAN FABIAN": "B-",
+    "ZAMBRANO SALAZAR THIAGO CAMILO": "B-"
 }

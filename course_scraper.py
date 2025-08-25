@@ -9,7 +9,8 @@ from academic_data import (
     trimestres_borrar_malos,
     trimestres_buenos_estudiantes,
     trimestres_malos_estudiantes,
-    trimestres_excepciones
+    trimestres_excepciones,
+    personalized_grades
 )
 from ambitos import obtener_ambitos_usuario
 from trimesters import obtener_trimestres_usuario
@@ -17,9 +18,16 @@ from utils import obtener_materia_usuario
 from nombres_estudiantes import nombres_buenos, nombres_malos, nombres_excepciones, notas_personalizadas
 
 def normalize_text(text):
-    text = text.strip().lower()
-    text = ''.join(ch for ch in unicodedata.normalize('NFD', text) if unicodedata.category(ch) != 'Mn')
-    text = re.sub(r'\s+', ' ', text)
+    if not text:
+        return ""
+    # Convert to lowercase and remove accents
+    text = text.lower()
+    # Normalize unicode characters and remove accents
+    text = unicodedata.normalize('NFKD', text)
+    text = ''.join([c for c in text if not unicodedata.combining(c)])
+    # Remove any remaining special characters and extra spaces
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 def seleccionar_trimestre(page, trimestre_num):
@@ -186,6 +194,24 @@ def procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones
                             continue
                         print(f"  - {nombre_estudiante} identificado como 'personalizado'. Nota: {nota}")
                     
+                    elif grupo == "grados_personalizados":
+                        # Normalize both names for comparison
+                        normalized_web_name = normalize_text(nombre_estudiante)
+                        
+                        # Try to find a matching name in personalized_grades
+                        matching_name = next(
+                            (name for name in personalized_grades.keys() 
+                             if normalize_text(name) == normalized_web_name),
+                            None
+                        )
+                        
+                        if matching_name:
+                            nota = personalized_grades[matching_name]
+                            print(f"  - {nombre_estudiante} identificado como '{matching_name}' con nota: {nota}")
+                        else:
+                            print(f"  - {nombre_estudiante} no tiene nota personalizada. Ignorando...")
+                            continue
+                    
                     else:
                         print(f"Grupo '{grupo}' no válido. Ignorando...")
                         continue
@@ -282,10 +308,14 @@ def procesar_todos_los_estudiantes(page, ambito_seleccionado, trimestre_num, acc
 def procesar_estudiantes_excepciones(page, ambito_seleccionado, trimestre_num, nombres_excepciones, accion="llenar"):
     return procesar_filas(page, ambito_seleccionado, trimestre_num, nombres_excepciones=nombres_excepciones, accion=accion, grupo="excepciones")
 
-def obtener_ambito_y_scrapear(page):
-    materia = obtener_materia_usuario()
+def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
+    from utils import obtener_materia_usuario
+    
+    # Obtener la materia basada en el grado y jornada seleccionados
+    materia = obtener_materia_usuario(grado_seleccionado, jornada)
+    
     if not seleccionar_materia(page, materia['nombre'], materia['jornada']):
-        print(f"No se pudo seleccionar la materia {materia['nombre']}")
+        print(f"No se pudo seleccionar la materia {materia['nombre']} - Jornada {materia['jornada']}")
         return False
 
     ambitos = obtener_ambitos_usuario(materia)
@@ -294,7 +324,7 @@ def obtener_ambito_y_scrapear(page):
     trimestres_seleccionados = obtener_trimestres_usuario()
     print(f"Trimestres seleccionados: {trimestres_seleccionados}")
 
-    opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado): ").strip().lower()
+    opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado/grados_personalizados): ").strip().lower()
     accion = input("¿Qué acción desea realizar? (llenar/borrar): ").strip().lower()
 
     for trimestre_num in trimestres_seleccionados:
@@ -304,7 +334,6 @@ def obtener_ambito_y_scrapear(page):
         for ambito in ambitos:
             print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
             if opcion == "todos":
-                # Procesar todos los estudiantes excepto las excepciones
                 procesar_filas(page, ambito, trimestre_num, 
                              nombres_excepciones=nombres_excepciones, 
                              nombres_buenos=nombres_buenos, 
@@ -332,9 +361,16 @@ def obtener_ambito_y_scrapear(page):
                              nombres_malos=None, 
                              accion=accion, 
                              grupo="personalizado")
+            elif opcion == "grados_personalizados":
+                from academic_data import personalized_grades
+                procesar_filas(page, ambito, trimestre_num,
+                             nombres_excepciones=None,
+                             nombres_buenos=list(personalized_grades.keys()),
+                             nombres_malos=None,
+                             accion=accion,
+                             grupo="grados_personalizados")
             else:
                 print("Opción no válida. Finalizando...")
                 return False
 
     print("Proceso de scraping finalizado.")
-    return True

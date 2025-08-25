@@ -1,6 +1,6 @@
 from config import load_credentials
 from auth import navigate_and_authenticate
-from utils import get_user_data_dir
+from utils import get_user_data_dir, seleccionar_grado, seleccionar_jornada
 from course_scraper import obtener_ambito_y_scrapear
 from playwright.sync_api import sync_playwright
 import os
@@ -14,6 +14,11 @@ def main():
     correo_login, contraseña = load_credentials('credenciales.data')
     user_data_dir = get_user_data_dir()
 
+    # Seleccionar grado y jornada
+    print("\n=== SELECCIÓN DE GRADO Y JORNADA ===")
+    grado_seleccionado = seleccionar_grado()
+    jornada = seleccionar_jornada()
+    
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch(channel="msedge", headless=False, args=["--start-maximized"])
@@ -22,8 +27,8 @@ def main():
             try:
                 page = navigate_and_authenticate(context, correo_login, contraseña)
                 if page:
-                    print("Login exitoso. Iniciando scraping...")
-                    obtener_ambito_y_scrapear(page)
+                    print("\nLogin exitoso. Iniciando scraping...")
+                    obtener_ambito_y_scrapear(page, grado_seleccionado, jornada)
                 else:
                     print("Fallo en autenticación.")
             except Exception as e:
