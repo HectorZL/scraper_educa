@@ -2,6 +2,26 @@ import os
 import re
 from academic_data import materias, grados_y_materias
 
+
+def _construir_materia(nombre, jornada):
+    """Devuelve un diccionario de materia con sus ámbitos si existen."""
+    jornada_normalizada = jornada.lower()
+    nombre_normalizado = nombre.lower()
+    for materia in materias:
+        if materia['nombre'].lower() == nombre_normalizado and materia['jornada'].lower() == jornada_normalizada:
+            return {
+                'nombre': nombre,
+                'jornada': jornada,
+                'ambitos': materia.get('ambitos', [])
+            }
+
+    print(f"Advertencia: no se encontraron ámbitos configurados para la materia '{nombre}' en la jornada '{jornada}'.")
+    return {
+        'nombre': nombre,
+        'jornada': jornada,
+        'ambitos': []
+    }
+
 def seleccionar_grado():
     """Permite al usuario seleccionar un grado escolar."""
     print("\nSeleccione el grado escolar:")
@@ -70,14 +90,14 @@ def obtener_materias_usuario(grado_seleccionado, jornada, multiple=True):
                 
                 if seleccion.lower() == 't':
                     # Seleccionar todas las materias
-                    return [{'nombre': m, 'jornada': jornada} for m in materias_grado]
+                    return [_construir_materia(m, jornada) for m in materias_grado]
                 
                 # Procesar múltiples selecciones
                 try:
                     selecciones = [int(s.strip()) for s in seleccion.split(',')]
                     if all(1 <= s <= len(materias_grado) for s in selecciones):
                         return [
-                            {'nombre': materias_grado[s-1], 'jornada': jornada}
+                            _construir_materia(materias_grado[s-1], jornada)
                             for s in sorted(set(selecciones))  # Eliminar duplicados y ordenar
                         ]
                     print("Algunos números están fuera de rango. Intente de nuevo.")
@@ -87,10 +107,7 @@ def obtener_materias_usuario(grado_seleccionado, jornada, multiple=True):
                 # Comportamiento para selección única (compatibilidad con código existente)
                 seleccion = int(input("\nIngrese el número correspondiente a la materia: "))
                 if 1 <= seleccion <= len(materias_grado):
-                    return [{
-                        'nombre': materias_grado[seleccion - 1],
-                        'jornada': jornada
-                    }]
+                    return [_construir_materia(materias_grado[seleccion - 1], jornada)]
                 print("Número fuera de rango. Intente de nuevo.")
                 
         except ValueError:

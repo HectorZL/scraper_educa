@@ -213,37 +213,25 @@ trimestres_excepciones = {
 # Personalized student grades
 personalized_grades = {
     # A- students
-    "COBEÑA GUDIÑO NOAH JONAIKER": "A-",
-    "ESPINOZA JAMA BRIANA ISABELLA": "A-",
-    "LUCAS FIGUEROA ELIF VALENTINA": "A-",
-    "MARCILLO CHILA KEISHA FIORELLA": "A-",  # Updated to match system format
-    "MEJIA ZAMBRANO JAHDIEL ISAAC": "A-",
-    "VALLE ROMERO SARAHI NICOLE": "A-",
+    "Arequipa Brianna": "A+",
+    "Chica Deith": "A+",
+    "Chila Angello": "A+",
+    "Figueroa Alaia": "A+",
+    "Mero Asher": "A+",
+    "Vela Helen": "A+",
+    "Vozmediano Julián": "A+",
     
     # B+ students
-    "ARTEAGA MONTES DANNA NARCISA": "B+",
-    "CAGUA CHILA KEYSI ALEJANDRA": "B+",
-    "CEDEÑO DELGADO FERNANDO IZAEL": "B+",
-    "COTERA GARCIA BAYOLETH ISABELLA": "B+",
-    "DÁVILA VERA MÍA SALOMÉ": "B+",
-    "ORTIZ CHAVEZ MELINA LORELY": "B+",
-    "PÀRRAGA OBANDO LEAH MERELIN": "B+",
-    "PUERTAS MERA EDITH SARAI": "B+",
-    "ROBLES ANCHUNDIA AYTHANA VICTORIA": "B+",
-    "TUMBACO DOMINGUEZ SARAI BETSABETH": "B+",
-    "VALENCIA BERMÙDEZ ELENA SOFIA": "B+",
-    "VELIZ ZAMBRANO ALEXANDER RICARDO": "B+",
-    "VERDUGA ARTEAGA DANNA VALENTINA": "B+",
-    "ZAMBRANO ZAMBRANO MARIA JOSE": "B+",
+    "Hidrovo Nayla": "B+",
+    "Ibarra Keisy": "B+",
+    "Risco Arturo": "B+",
+    "Risco Sofía": "B+",
+    "Sabando Liam": "B+",
+    "Vélez Ian": "B+",
+    "Vélez Danna": "B+",
     
-    # B- students
-    "BENAVIDES SABANDO KEYLER FERNANDO": "B-",
-    "BRAVO CHEME HELI YASU": "B-",
-    "GARCIA GRACIA EITHAN ORLEY": "B-",
-    "GRACIA MARTINEZ KAREN LIXE": "B-",
-    "PINARGOTE ORTIZ MARA PAULETH": "B-",
-    "QUIJIJE PILAMUNGA JHOAN SEBASTIAN": "B-",
-    "SANTANA LOOR ORIANA VALENTINA": "B-",
-    "VELASQUEZ FALCON ASLAN FABIAN": "B-",
-    "ZAMBRANO SALAZAR THIAGO CAMILO": "B-"
+    # ignorar
+    "Briones Pacheco": "NE",
+    "Paiva Cordero": "NE",
+    "Rodríguez Sinchuguani": "NE"
 }

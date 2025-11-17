@@ -1,4 +1,5 @@
-from playwright.sync_api import Playwright, sync_playwright
+from playwright.sync_api import Playwright, sync_playwright, TimeoutError as PlaywrightTimeoutError
+
 from bs4 import BeautifulSoup
 import time
 import unicodedata
@@ -34,6 +35,73 @@ def normalize_text(text):
     text = re.sub(r'[^\w\s]', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
+
+def volver_a_primera_pagina(page):
+    """Navega al inicio de la tabla usando el botón 'Anterior' hasta que quede deshabilitado."""
+    try:
+        while True:
+            prev_button = page.query_selector("button.btn-primary:has-text('Anterior')")
+            if not prev_button or not prev_button.is_enabled():
+                break
+            page.evaluate("(btn) => btn.click()", prev_button)
+            page.wait_for_load_state('networkidle')
+            time.sleep(1)
+    except Exception as e:
+        print(f"  - No se pudo regresar a la primera página: {str(e)}")
+
+def cerrar_dialogos_confirmacion(page, contexto=""):
+    """Cierra todos los modales de SweetAlert en cola para evitar bloqueos."""
+    while True:
+        try:
+            confirm_button = page.wait_for_selector('button.swal2-confirm', timeout=1500)
+            if not confirm_button:
+                break
+            label = (confirm_button.inner_text() or "").strip() or "Confirmar"
+            page.evaluate("(btn) => btn.click()", confirm_button)
+            sufijo = f" ({contexto})" if contexto else ""
+            print(f"    - Botón '{label}' presionado{sufijo}")
+        except PlaywrightTimeoutError:
+            break
+        except Exception as e:
+            print(f"    - Error al cerrar confirmación: {str(e)}")
+            break
+
+def obtener_calificacion_default(grupo, trimestre_num):
+    """Obtiene la calificación por defecto según el grupo y trimestre."""
+    mapeos = {
+        "buenos": trimestres_buenos_estudiantes,
+        "malos": trimestres_malos_estudiantes,
+        "personalizado": trimestres_excepciones,
+        "grados_personalizados": trimestres
+    }
+
+    data = mapeos.get(grupo, trimestres)
+    registro = data.get(trimestre_num)
+    if registro and len(registro) > 1:
+        return registro[1]
+    return "NE"
+
+def _buscar_calificacion_personalizada(nombre_estudiante):
+    """Busca coincidencias aproximadas dentro de personalized_grades usando tokens del nombre."""
+    nombre_normalizado = normalize_text(nombre_estudiante)
+    if not nombre_normalizado:
+        return None, None
+
+    tokens_nombre = set(nombre_normalizado.split())
+
+    for clave, nota in personalized_grades.items():
+        clave_normalizada = normalize_text(clave)
+        if not clave_normalizada:
+            continue
+
+        if clave_normalizada == nombre_normalizado:
+            return nota, clave
+
+        tokens_clave = clave_normalizada.split()
+        if tokens_clave and all(token in tokens_nombre for token in tokens_clave):
+            return nota, clave
+
+    return None, None
 
 def seleccionar_trimestre(page, trimestre_num, grado_seleccionado, es_civica=False):
     """Selecciona el trimestre según el grado.
@@ -75,11 +143,44 @@ def seleccionar_trimestre(page, trimestre_num, grado_seleccionado, es_civica=Fal
         else:
             # Para la interfaz antigua (Inicial y 1ro)
             try:
-                # Hacer clic en el dropdown de trimestres
-                page.click("select#trimestre", timeout=10000)
-                
-                # Seleccionar el trimestre (el valor es el mismo que el número)
-                page.select_option("select#trimestre", str(trimestre_num))
+                posibles_selectores = [
+                    "select#trimestreSeleccionado",
+                    "select[name='trimestreSeleccionado']",
+                    "select#trimestre"
+                ]
+                selector_encontrado = None
+                for selector in posibles_selectores:
+                    try:
+                        page.wait_for_selector(selector, state='visible', timeout=3000)
+                        selector_encontrado = selector
+                        break
+                    except Exception:
+                        continue
+
+                if not selector_encontrado:
+                    raise Exception("No se encontró el selector de trimestre")
+
+                print(f"  - Usando selector '{selector_encontrado}'")
+
+                if "trimestreSeleccionado" in selector_encontrado:
+                    trimestre_label = f"TRIMESTRE {trimestre_num}"
+                    page.select_option(selector_encontrado, label=trimestre_label)
+                else:
+                    # Selector antiguo que usa valores numéricos
+                    page.select_option(selector_encontrado, str(trimestre_num))
+
+                # Validar que el trimestre se seleccionó correctamente
+                selected_text = page.evaluate(
+                    "(selector) => {\n"
+                    "  const select = document.querySelector(selector);\n"
+                    "  return select ? select.options[select.selectedIndex].text.trim() : '';\n"
+                    "}",
+                    selector_encontrado
+                )
+                esperado = f"TRIMESTRE {trimestre_num}"
+                if esperado not in selected_text.upper():
+                    raise Exception(f"Confirmación fallida: '{selected_text}'")
+
                 print(f"  - Seleccionado TRIMESTRE {trimestre_num}")
                 time.sleep(2)  # Esperar a que cargue
                 return True
@@ -244,6 +345,8 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
         print("Esperando a que cargue la tabla de estudiantes...")
         page.wait_for_selector('table tbody tr', state='visible', timeout=30000)
         print("Tabla de estudiantes cargada correctamente")
+
+        volver_a_primera_pagina(page)
         
         # Inicializar contador de páginas
         pagina_actual = 1
@@ -287,10 +390,20 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     elif grupo == "personalizado" and (not nombres_excepciones or not any(normalize_text(n) == nombre_normalizado for n in nombres_excepciones)):
                         print(f"  - No está en la lista personalizada. Saltando...")
                         continue
-                    
+                    elif grupo == "grados_personalizados":
+                        calif_personalizada, clave_match = _buscar_calificacion_personalizada(nombre_estudiante)
+                        if not calif_personalizada:
+                            print("  - No está en personalized_grades. Saltando...")
+                            continue
+                        else:
+                            print(f"  - Coincidencia personalizada con '{clave_match}'.")
+
                     # Buscar la calificación en el mapeo
                     calificacion = None
-                    if mapeo_calificaciones:
+                    if grupo == "grados_personalizados":
+                        calificacion, _ = _buscar_calificacion_personalizada(nombre_estudiante)
+
+                    if mapeo_calificaciones and not calificacion:
                         # Intentar encontrar una coincidencia exacta primero
                         for nombre_archivo, califs in mapeo_calificaciones.items():
                             if normalize_text(nombre_archivo) == nombre_normalizado:
@@ -308,12 +421,7 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     
                     # Si no se encontró calificación, usar valores por defecto según el grupo
                     if not calificacion:
-                        if grupo == "buenos":
-                            calificacion = "10"  # Ejemplo para grupo 'buenos'
-                        elif grupo == "malos":
-                            calificacion = "7"   # Ejemplo para grupo 'malos'
-                        else:
-                            calificacion = "8"   # Calificación por defecto
+                        calificacion = obtener_calificacion_default(grupo, trimestre_num)
                         print(f"  - No se encontró calificación en el archivo. Usando valor por defecto: {calificacion}")
                     else:
                         print(f"  - Calificación encontrada en archivo: {calificacion}")
@@ -353,6 +461,7 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                             if save_button:
                                 save_button.click()
                                 print("  - Guardando cambios...")
+                                cerrar_dialogos_confirmacion(page, "fila")
                                 time.sleep(2)  # Esperar a que se guarde
                                 
                                 # Verificar si aparece el mensaje de confirmación
@@ -427,12 +536,189 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
             page.select_option('select[name="ambitoSeleccionado"]', value=value_to_select)
             print(f"Ámbito '{ambito}' seleccionado correctamente.")
             time.sleep(2)  # Esperar a que cargue la tabla
-            
-            # Aquí iría el código específico para procesar la tabla en la interfaz antigua
-            # ...
-            
-            print("Proceso de calificación completado.")
-            return True
+
+            volver_a_primera_pagina(page)
+
+            try:
+                page.evaluate("() => window.scrollTo(0, 0)")
+            except Exception:
+                pass
+
+            total_estudiantes_procesados = 0
+            pagina_actual = 1
+
+            while True:
+                print(f"\n--- Procesando página {pagina_actual} ---")
+                page.wait_for_selector('table tbody tr', state='visible', timeout=30000)
+                rows = page.query_selector_all('table tbody tr')
+                if not rows:
+                    print("No se encontraron estudiantes en la tabla")
+                    break
+
+                for idx, row in enumerate(rows, 1):
+                    try:
+                        indice_global = total_estudiantes_procesados + idx
+                        print(f"\n--- Procesando estudiante {indice_global} (Página {pagina_actual}, Estudiante {idx}/{len(rows)}) ---")
+
+                        nombre_element = row.query_selector('td.th-fixed') or row.query_selector('td:nth-child(1)')
+                        if not nombre_element:
+                            print("  - No se pudo encontrar el elemento del nombre")
+                            continue
+
+                        nombre_estudiante = nombre_element.inner_text().strip()
+                        print(f"  - Estudiante: {nombre_estudiante}")
+
+                        nombre_normalizado = normalize_text(nombre_estudiante)
+
+                        if grupo == "buenos" and (not nombres_buenos or not any(normalize_text(n) == nombre_normalizado for n in nombres_buenos)):
+                            print("  - No está en el grupo 'buenos'. Saltando...")
+                            continue
+                        elif grupo == "malos" and (not nombres_malos or not any(normalize_text(n) == nombre_normalizado for n in nombres_malos)):
+                            print("  - No está en el grupo 'malos'. Saltando...")
+                            continue
+                        elif grupo == "personalizado" and (not nombres_excepciones or not any(normalize_text(n) == nombre_normalizado for n in nombres_excepciones)):
+                            print("  - No está en la lista personalizada. Saltando...")
+                            continue
+                        elif grupo == "grados_personalizados":
+                            calif_personalizada, clave_match = _buscar_calificacion_personalizada(nombre_estudiante)
+                            if not calif_personalizada:
+                                print("  - No está en personalized_grades. Saltando...")
+                                continue
+                            else:
+                                print(f"  - Coincidencia personalizada con '{clave_match}'.")
+
+                        calificacion = None
+                        if grupo == "grados_personalizados":
+                            calificacion, _ = _buscar_calificacion_personalizada(nombre_estudiante)
+
+                        if mapeo_calificaciones and not calificacion:
+                            for nombre_archivo, califs in mapeo_calificaciones.items():
+                                if normalize_text(nombre_archivo) == nombre_normalizado:
+                                    calificacion = califs.get(ambito)
+                                    if calificacion:
+                                        break
+
+                            if not calificacion:
+                                for nombre_archivo, califs in mapeo_calificaciones.items():
+                                    if nombre_normalizado in normalize_text(nombre_archivo) or normalize_text(nombre_archivo) in nombre_normalizado:
+                                        calificacion = califs.get(ambito)
+                                        if calificacion:
+                                            break
+
+                        if not calificacion:
+                            calificacion = obtener_calificacion_default(grupo, trimestre_num)
+                            print(f"  - No se encontró calificación en el archivo. Usando valor por defecto de academic_data: {calificacion}")
+                        else:
+                            print(f"  - Calificación encontrada en archivo: {calificacion}")
+
+                        input_fields = row.query_selector_all('td input[type="text"]')
+                        if not input_fields:
+                            print("  - No se encontraron campos de calificación en la fila")
+                            continue
+
+                        debe_guardar = False
+
+                        for campo_idx, input_field in enumerate(input_fields, 1):
+                            try:
+                                valor_actual = (input_field.input_value() or "").strip()
+                            except Exception as e:
+                                print(f"    - No se pudo obtener el valor del campo {campo_idx}: {str(e)}")
+                                valor_actual = ""
+
+                            if accion == "llenar":
+                                if valor_actual != str(calificacion):
+                                    try:
+                                        input_field.evaluate(
+                                            "(el, value) => { el.value = value; el.dispatchEvent(new Event('input', { bubbles: true })); }",
+                                            str(calificacion)
+                                        )
+                                        print(f"    - Campo {campo_idx}: asignando {calificacion}")
+                                        debe_guardar = True
+                                    except Exception as e:
+                                        print(f"    - Error al llenar el campo {campo_idx}: {str(e)}")
+                                else:
+                                    print(f"    - Campo {campo_idx}: ya contiene {valor_actual}")
+                            elif accion == "borrar":
+                                if valor_actual:
+                                    try:
+                                        input_field.evaluate(
+                                            "(el) => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); }"
+                                        )
+                                        print(f"    - Campo {campo_idx}: valor limpiado")
+                                        debe_guardar = True
+                                    except Exception as e:
+                                        print(f"    - Error al limpiar el campo {campo_idx}: {str(e)}")
+
+                        if not debe_guardar:
+                            print("  - No hubo cambios en la fila. Saltando guardado.")
+                            total_estudiantes_procesados += 1
+                            continue
+
+                        save_button = row.query_selector("button.btn-primary:has-text('Guardar')") or row.query_selector('td button.btn-primary')
+                        if save_button:
+                            try:
+                                page.evaluate("(btn) => btn.click()", save_button)
+                                print("  - Guardando cambios...")
+                                cerrar_dialogos_confirmacion(page, "fila")
+                            except Exception as e:
+                                print(f"  - Error al guardar la fila: {str(e)}")
+                        else:
+                            print("  - No se encontró el botón de guardar en la fila")
+
+                        total_estudiantes_procesados += 1
+
+                    except Exception as e:
+                        print(f"Error al procesar estudiante: {str(e)}")
+                        import traceback
+                        traceback.print_exc()
+                        continue
+
+                # Verificar paginación
+                try:
+                    pagination_span = page.query_selector('span:has-text("Página")')
+                    if not pagination_span:
+                        print("No se encontró información de paginación. Terminando...")
+                        break
+
+                    page_text = pagination_span.inner_text().strip()
+                    import re
+                    match = re.search(r'Página\s+(\d+)\s+de\s+(\d+)', page_text, re.IGNORECASE)
+                    if not match:
+                        print(f"Formato de paginación no reconocido: '{page_text}'")
+                        break
+
+                    current_page = int(match.group(1))
+                    total_pages = int(match.group(2))
+
+                    if current_page >= total_pages:
+                        print("No hay más páginas por procesar.")
+                        break
+
+                    next_button = page.query_selector("button.btn-primary:has-text('Siguiente')")
+                    if not next_button or not next_button.is_enabled():
+                        print("El botón 'Siguiente' no está disponible.")
+                        break
+
+                    print(f"Avanzando a la página {current_page + 1} de {total_pages}...")
+                    next_button.click()
+                    page.wait_for_load_state('networkidle')
+                    time.sleep(2)
+                    pagina_actual = current_page + 1
+
+                except Exception as e:
+                    print(f"Error al manejar la paginación: {str(e)}")
+                    break
+
+            print(f"\nProceso de calificación completado. Total de estudiantes procesados: {total_estudiantes_procesados}")
+            try:
+                final_ok = page.query_selector("button.swal2-confirm")
+                if final_ok:
+                    page.evaluate("(btn) => btn.click()", final_ok)
+                    print("  - Botón final 'Aceptar' presionado")
+            except Exception as e:
+                print(f"  - No se pudo cerrar el diálogo final: {str(e)}")
+            return total_estudiantes_procesados > 0
+
         else:
             print(f"No se encontró el ámbito '{ambito}'.")
             return False
@@ -844,7 +1130,7 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                     continue
                 
                 # Procesar cada ámbito
-                for ambito in obtener_ambitos_usuario():
+                for ambito in obtener_ambitos_usuario(materia):
                     print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
                     
                     if opcion == "todos":
