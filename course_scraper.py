@@ -437,6 +437,7 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                                 if normalize_text(nombre_archivo) == nombre_normalizado:
                                     calificacion = califs.get(clave_busqueda)
                                     if calificacion:
+                                        print(f"  - Coincidencia exacta encontrada: {nombre_archivo}")
                                         break
                             
                             # Si no hay coincidencia exacta, buscar coincidencia parcial
@@ -445,6 +446,19 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                                     if nombre_normalizado in normalize_text(nombre_archivo) or normalize_text(nombre_archivo) in nombre_normalizado:
                                         calificacion = califs.get(clave_busqueda)
                                         if calificacion:
+                                            print(f"  - Coincidencia parcial encontrada: {nombre_archivo}")
+                                            break
+                            
+                            # Si aún no hay coincidencia, buscar coincidencia con diferencias mínimas (errores tipográficos)
+                            if not calificacion:
+                                for nombre_archivo, califs in mapeo_calificaciones.items():
+                                    nombre_archivo_normalizado = normalize_text(nombre_archivo)
+                                    # Calcular distancia de Levenshtein simplificada (reemplazar caracteres similares)
+                                    if (abs(len(nombre_normalizado) - len(nombre_archivo_normalizado)) <= 2 and
+                                        sum(c1 != c2 for c1, c2 in zip(nombre_normalizado, nombre_archivo_normalizado)) <= 2):
+                                        calificacion = califs.get(clave_busqueda)
+                                        if calificacion:
+                                            print(f"  - Coincidencia por similitud encontrada: {nombre_archivo}")
                                             break
                     
                     # Si no se encontró calificación, usar valores por defecto según el grupo
@@ -484,23 +498,27 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                             print(f"  - Asignando calificación: {calificacion}")
                             time.sleep(0.5)
                             
-                            # Hacer clic en el botón de guardar
-                            save_button = row.query_selector('td:nth-child(5) button.btn-primary')
+                            # Hacer clic en el botón de guardar (especial para 2do-7mo)
+                            save_button = row.query_selector('button.btn-primary.ng-star-inserted')
+                            if not save_button:
+                                save_button = row.query_selector('td:nth-child(5) button.btn-primary')
+
                             if save_button:
                                 save_button.click()
                                 print("  - Guardando cambios...")
-                                cerrar_dialogos_confirmacion(page, "fila")
-                                time.sleep(2)  # Esperar a que se guarde
+                                time.sleep(1)  # Pequeña pausa antes de buscar confirmación
                                 
-                                # Verificar si aparece el mensaje de confirmación
+                                # Buscar y hacer clic en el botón de confirmación para 2do-7mo
                                 try:
-                                    confirm_button = page.wait_for_selector('button.swal2-confirm', timeout=3000)
+                                    confirm_button = page.wait_for_selector('button.swal2-confirm', timeout=5000)
                                     if confirm_button:
                                         confirm_button.click()
-                                        print("  - Confirmación aceptada")
+                                        print("  - Confirmación aceptada (2do-7mo)")
                                         time.sleep(1)
                                 except Exception as e:
                                     print(f"  - No se encontró el botón de confirmación: {str(e)}")
+                                
+                                time.sleep(1)  # Esperar final
                             else:
                                 print("  - No se encontró el botón de guardar")
                         except Exception as e:
