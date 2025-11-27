@@ -313,7 +313,7 @@ def seleccionar_materia(page, nombre, jornada, grado_seleccionado=None, timeout=
         return False
 
 def procesar_filas(page, ambito, trimestre_num, grado_seleccionado, nombres_excepciones=None, 
-                 nombres_buenos=None, nombres_malos=None, accion="llenar", grupo="todos", mapeo_calificaciones=None):
+                 nombres_buenos=None, nombres_malos=None, accion="llenar", grupo="todos", mapeo_calificaciones=None, materia_nombre=None):
     """Procesa las filas de estudiantes según el grupo seleccionado.
     
     Args:
@@ -339,7 +339,7 @@ def procesar_filas(page, ambito, trimestre_num, grado_seleccionado, nombres_exce
             return _procesar_filas_nueva_interfaz(
                 page, ambito, trimestre_num, grado_seleccionado, 
                 nombres_excepciones, nombres_buenos, nombres_malos, accion, grupo,
-                mapeo_calificaciones
+                mapeo_calificaciones, materia_nombre  # Pasar el nombre de la materia
             )
         else:
             # Antigua interfaz para Inicial y 1ro
@@ -357,8 +357,11 @@ def procesar_filas(page, ambito, trimestre_num, grado_seleccionado, nombres_exce
 
 def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_seleccionado, 
                                 nombres_excepciones, nombres_buenos, nombres_malos, accion, grupo,
-                                mapeo_calificaciones=None):
-    """Procesa las filas usando la nueva interfaz con pestañas (grados 2-7) con manejo de paginación."""
+                                mapeo_calificaciones=None, materia_nombre=None):
+    """Procesa las filas usando la nueva interfaz con pestañas (grados 2-7) con manejo de paginación.
+    Args:
+        materia_nombre: Nombre de la materia actual (usado como clave en mapeo_calificaciones cuando ambito es None).
+    """
     try:
         print("Esperando a que cargue la tabla de estudiantes...")
         page.wait_for_selector('table tbody tr', state='visible', timeout=30000)
@@ -422,20 +425,27 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                         calificacion, _ = _buscar_calificacion_personalizada(nombre_estudiante)
 
                     if mapeo_calificaciones and not calificacion:
-                        # Intentar encontrar una coincidencia exacta primero
-                        for nombre_archivo, califs in mapeo_calificaciones.items():
-                            if normalize_text(nombre_archivo) == nombre_normalizado:
-                                calificacion = califs.get(ambito)
-                                if calificacion:
-                                    break
+                        # Determinar la clave a usar para buscar la calificación
+                        clave_busqueda = ambito
+                        if ambito is None and materia_nombre:
+                            # Para grados 2-7, usar el nombre de la materia como clave
+                            clave_busqueda = materia_nombre
                         
-                        # Si no hay coincidencia exacta, buscar coincidencia parcial
-                        if not calificacion:
+                        if clave_busqueda:
+                            # Intentar encontrar una coincidencia exacta primero
                             for nombre_archivo, califs in mapeo_calificaciones.items():
-                                if nombre_normalizado in normalize_text(nombre_archivo) or normalize_text(nombre_archivo) in nombre_normalizado:
-                                    calificacion = califs.get(ambito)
+                                if normalize_text(nombre_archivo) == nombre_normalizado:
+                                    calificacion = califs.get(clave_busqueda)
                                     if calificacion:
                                         break
+                            
+                            # Si no hay coincidencia exacta, buscar coincidencia parcial
+                            if not calificacion:
+                                for nombre_archivo, califs in mapeo_calificaciones.items():
+                                    if nombre_normalizado in normalize_text(nombre_archivo) or normalize_text(nombre_archivo) in nombre_normalizado:
+                                        calificacion = califs.get(clave_busqueda)
+                                        if calificacion:
+                                            break
                     
                     # Si no se encontró calificación, usar valores por defecto según el grupo
                     if not calificacion:
@@ -745,7 +755,7 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
         print(f"Error al procesar con la interfaz antigua: {str(e)}")
         return False
 
-def procesar_todos_los_estudiantes(page, ambito, trimestre_num, grado_seleccionado, accion="llenar", mapeo_calificaciones=None):
+def procesar_todos_los_estudiantes(page, ambito, trimestre_num, grado_seleccionado, accion="llenar", mapeo_calificaciones=None, materia_nombre=None):
     return procesar_filas(
         page, 
         ambito, 
@@ -756,7 +766,8 @@ def procesar_todos_los_estudiantes(page, ambito, trimestre_num, grado_selecciona
         nombres_malos=nombres_malos,
         accion=accion, 
         grupo="todos",
-        mapeo_calificaciones=mapeo_calificaciones
+        mapeo_calificaciones=mapeo_calificaciones,
+        materia_nombre=materia_nombre
     )
 
 def procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personalizadas=False):
@@ -1189,8 +1200,14 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
             if accion == 'llenar':
                 mapeo_calificaciones = crear_mapa_calificaciones('sb.xlsx')
 
-            # Preguntar qué grupo procesar
-            opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado/grados_personalizados): ").lower()
+            # Para grados 2do en adelante (nueva interfaz con Excel), usar siempre todos los estudiantes
+            # y las notas del archivo, sin preguntar grupo
+            if any(str(g) in str(grado_seleccionado) for g in range(2, 8)):
+                opcion = "todos"
+                print("\nGrado con mapeo de Excel (2do-7mo): se procesarán TODOS los estudiantes usando las notas del archivo.")
+            else:
+                # Preguntar qué grupo procesar solo para Inicial y 1ro
+                opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado/grados_personalizados): ").lower()
 
             for trimestre_num in trimestres_materia:
                 print(f"\nSeleccionando Trimestre {trimestre_num}...")
@@ -1201,7 +1218,13 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                     continue
 
                 # Procesar cada ámbito
-                for ambito in obtener_ambitos_usuario(materia):
+                # Para grados 2do-7mo, la nueva interfaz no usa ámbitos; evitamos preguntar ámbitos
+                if any(str(g) in str(grado_seleccionado) for g in range(2, 8)):
+                    ambitos = [None]
+                else:
+                    ambitos = obtener_ambitos_usuario(materia)
+
+                for ambito in ambitos:
                     print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
 
                     if opcion == "todos":
@@ -1211,7 +1234,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             trimestre_num,
                             grado_seleccionado=grado_seleccionado,
                             accion=accion,
-                            mapeo_calificaciones=mapeo_calificaciones
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
                         )
                     elif opcion == "buenos":
                         procesar_filas(
@@ -1224,7 +1248,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             nombres_malos=None,
                             accion=accion,
                             grupo="buenos",
-                            mapeo_calificaciones=mapeo_calificaciones
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
                         )
                     elif opcion == "malos":
                         procesar_filas(
@@ -1237,7 +1262,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             nombres_malos=nombres_malos,
                             accion=accion,
                             grupo="malos",
-                            mapeo_calificaciones=mapeo_calificaciones
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
                         )
                     elif opcion == "personalizado":
                         procesar_filas(
@@ -1250,7 +1276,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             nombres_malos=None,
                             accion=accion,
                             grupo="personalizado",
-                            mapeo_calificaciones=mapeo_calificaciones
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
                         )
                     elif opcion == "grados_personalizados":
                         from academic_data import personalized_grades
@@ -1264,7 +1291,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             nombres_malos=None,
                             accion=accion,
                             grupo="grados_personalizados",
-                            mapeo_calificaciones=mapeo_calificaciones
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
                         )
                     else:
                         print("Opción no válida. Continuando con la siguiente materia...")

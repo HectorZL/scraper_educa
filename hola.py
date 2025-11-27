@@ -21,11 +21,31 @@ def crear_mapa_calificaciones(ruta_archivo: str) -> dict:
     
     try:
         print(f"Procesando archivo: {ruta_archivo}")
-        
-        # Leer el archivo sin asumir estructura
+
+        # Detectar hojas disponibles y permitir que el usuario elija
+        libro = openpyxl.load_workbook(ruta_archivo, read_only=True)
+        hojas = libro.sheetnames
+        print("\nHojas disponibles en el archivo:")
+        for i, nombre_hoja in enumerate(hojas, 1):
+            print(f"{i}. {nombre_hoja}")
+
+        while True:
+            try:
+                seleccion_hoja = int(input("\nIngrese el número de la hoja a usar para las notas: ").strip())
+                if 1 <= seleccion_hoja <= len(hojas):
+                    hoja_seleccionada = hojas[seleccion_hoja - 1]
+                    break
+                else:
+                    print("Número fuera de rango. Intente nuevamente.")
+            except ValueError:
+                print("Entrada no válida. Ingrese un número de la lista.")
+
+        print(f"\nUsando la hoja: {hoja_seleccionada}")
+
+        # Leer el archivo sin asumir estructura usando la hoja seleccionada
         df = pd.read_excel(
             ruta_archivo,
-            sheet_name='CONSOLIDADO 1ER TRIM.',
+            sheet_name=hoja_seleccionada,
             header=None,
             engine='openpyxl'
         )
@@ -46,7 +66,7 @@ def crear_mapa_calificaciones(ruta_archivo: str) -> dict:
         # Volver a leer el archivo con los encabezados correctos
         df = pd.read_excel(
             ruta_archivo,
-            sheet_name='CONSOLIDADO 1ER TRIM.',
+            sheet_name=hoja_seleccionada,
             header=header_row,
             engine='openpyxl'
         )
@@ -141,12 +161,12 @@ def crear_mapa_calificaciones(ruta_archivo: str) -> dict:
         
         # Ordenar las columnas según el orden especificado
         columnas_ordenadas = ['ESTUDIANTE'] + [m for m in MATERIAS_ORDENADAS if m in df_filtrado.columns]
-        df_ordenado = df_filtrado[columnas_ordenadas]
+        df_ordenado = df_filtrado[columnas_ordenadas].copy()
         
         # Asegurarse de que todas las materias estén en el DataFrame
         for materia in MATERIAS_ORDENADAS:
             if materia not in df_ordenado.columns:
-                df_ordenado[materia] = None
+                df_ordenado.loc[:, materia] = None
         
         # Aplicar las reglas especiales
         for i, row in df_ordenado.iterrows():
@@ -160,6 +180,19 @@ def crear_mapa_calificaciones(ruta_archivo: str) -> dict:
                 if (pd.isna(row['ANIMACIÓN A LA LECTURA']) or row['ANIMACIÓN A LA LECTURA'] == '') and pd.notna(row['LENGUA Y LITERATURA']):
                     df_ordenado.at[i, 'ANIMACIÓN A LA LECTURA'] = row['LENGUA Y LITERATURA']
         
+        # Debug: mostrar un resumen del DataFrame resultante
+        print("\n=== RESUMEN DEL DATAFRAME DE NOTAS (df_ordenado) ===")
+        print(f"Filas: {len(df_ordenado)}, Columnas: {len(df_ordenado.columns)}")
+        print("Columnas:")
+        for col in df_ordenado.columns:
+            print(f"  - {col}")
+
+        print("\nPrimeros 10 estudiantes con sus notas:")
+        try:
+            print(df_ordenado.head(10).to_string(index=False))
+        except Exception as e:
+            print(f"Error al imprimir df_ordenado: {e}")
+
         # Convertir a diccionario ordenado
         mapa_final = OrderedDict()
         for _, row in df_ordenado.iterrows():
