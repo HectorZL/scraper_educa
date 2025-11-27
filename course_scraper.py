@@ -759,15 +759,34 @@ def procesar_todos_los_estudiantes(page, ambito, trimestre_num, grado_selecciona
         mapeo_calificaciones=mapeo_calificaciones
     )
 
-def procesar_civica(page, trimestre_num, grado_seleccionado):
-    """
-    Procesa la materia de Cívica de manera especial para grados 2-7.
+def procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personalizadas=False):
+    """Procesa la materia de Cívica.
     
-    Args:
-        page: Página de Playwright
-        trimestre_num: Número de trimestre (1-3)
-        grado_seleccionado: Grado seleccionado (ej: '2do', '3ro', etc.)
+    Si usar_notas_personalizadas es True, se usa personalized_grades para decidir
+    qué valor seleccionar en los dropdowns por estudiante:
+      - A-  => SIEMPRE
+      - B+, B- => FRECUENTEMENTE
+      - cualquier otra nota => SIEMPRE (comportamiento por defecto)
     """
+    def _obtener_etiqueta_civica(nombre_estudiante):
+        if not usar_notas_personalizadas:
+            return "SIEMPRE"
+
+        nota, clave = _buscar_calificacion_personalizada(nombre_estudiante)
+        if not nota:
+            print("    - No hay nota personalizada para Cívica, usando 'SIEMPRE'.")
+            return "SIEMPRE"
+
+        print(f"    - Nota personalizada para Cívica ({clave}): {nota}")
+
+        if nota == "A-":
+            return "SIEMPRE"
+        if nota in ("B+", "B-"):
+            return "FRECUENTEMENTE"
+
+        # Cualquier otra nota cae al modo por defecto
+        return "SIEMPRE"
+
     def procesar_pagina_actual(trimestre_num):
         # Obtener todas las filas de estudiantes
         rows = page.query_selector_all('table tbody tr')
@@ -852,13 +871,25 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
                     try_volver()
                     continue
                 
-                # Procesar los dropdowns de SIEMPRE
+                # Procesar los dropdowns de Cívica (SIEMPRE o FRECUENTEMENTE según el modo)
                 try:
                     print("  - Procesando opciones del formulario...")
                     # Esperar a que los dropdowns estén visibles
                     page.wait_for_selector('select.form-control.wide-select', state='visible', timeout=5000)
                     
-                    # Seleccionar SIEMPRE en todos los dropdowns
+                    # Determinar la etiqueta a usar para este estudiante
+                    etiqueta_objetivo = _obtener_etiqueta_civica(nombre_estudiante)
+                    print(f"    - Etiqueta objetivo para Cívica: {etiqueta_objetivo}")
+
+                    # Si la etiqueta es 'NE', no llenar nada y pasar al siguiente estudiante
+                    if str(etiqueta_objetivo).strip().upper() == "NE":
+                        print("    - Etiqueta 'NE' detectada: no se modifican los valores y se pasa al siguiente estudiante.")
+                        # Volver a la lista de estudiantes sin guardar cambios
+                        if not try_volver():
+                            return False
+                        continue
+
+                    # Seleccionar la etiqueta objetivo en todos los dropdowns
                     dropdowns = page.query_selector_all('select.form-control.wide-select')
                     if not dropdowns:
                         print("    - No se encontraron dropdowns para llenar")
@@ -875,10 +906,36 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
                                 if len(options) <= 1:  # Solo tiene 'Seleccione una opción'
                                     print(f"    - Dropdown {i} no tiene opciones válidas")
                                     continue
-                                
-                                # Seleccionar SIEMPRE (value="17")
-                                dropdown.select_option(value="17")
-                                print(f"    - Dropdown {i}: SIEMPRE seleccionado")
+
+                                # Buscar el value cuya etiqueta contenga la palabra clave deseada
+                                valor_a_seleccionar = None
+                                etiqueta_min = etiqueta_objetivo.lower()
+                                for opt in options:
+                                    txt = (opt.inner_text() or "").strip().lower()
+                                    if not txt:
+                                        continue
+                                    # Coincidencia flexible: contiene "siempre" o "frecuent" según la etiqueta objetivo
+                                    if "siempre" in txt and "siempre" in etiqueta_min:
+                                        valor_a_seleccionar = opt.get_attribute("value")
+                                        break
+                                    if "frecuent" in txt and "frecuent" in etiqueta_min:
+                                        valor_a_seleccionar = opt.get_attribute("value")
+                                        break
+
+                                if not valor_a_seleccionar:
+                                    print(f"    - No se encontró opción que coincida con '{etiqueta_objetivo}', usando valor por defecto si existe.")
+                                    # Fallback: intentar usar directamente la primera opción distinta de 'Seleccione una opción'
+                                    for opt in options:
+                                        txt = (opt.inner_text() or "").strip().lower()
+                                        if txt and "seleccione" not in txt:
+                                            valor_a_seleccionar = opt.get_attribute("value")
+                                            break
+
+                                if valor_a_seleccionar:
+                                    dropdown.select_option(value=valor_a_seleccionar)
+                                    print(f"    - Dropdown {i}: seleccionando '{etiqueta_objetivo}' (value={valor_a_seleccionar})")
+                                else:
+                                    print(f"    - No se pudo determinar un valor para el dropdown {i}, se omite.")
                                 time.sleep(0.3)  # Pequeña pausa entre interacciones
                                 
                             except Exception as e:
@@ -894,6 +951,8 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
                             btn.scrollIntoView({behavior: 'smooth', block: 'center'});
                             btn.click();
                         }''', save_button)
+                        # Cerrar diálogos de confirmación (SweetAlert) como en el flujo antiguo
+                        cerrar_dialogos_confirmacion(page, "civica")
                         time.sleep(2)  # Esperar a que se guarde
                         
                         # Verificar si se guardó correctamente
@@ -1047,114 +1106,108 @@ def procesar_civica(page, trimestre_num, grado_seleccionado):
 
 def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
     from utils import obtener_materias_usuario
-    
+
     try:
         # Obtener las materias del usuario
         materias = obtener_materias_usuario(grado_seleccionado, jornada)
-        
+
         if not materias:
             print("No se encontraron materias para el grado y jornada seleccionados.")
             return False
-            
+
         # Mostrar las materias disponibles
         print("\nMaterias disponibles para", grado_seleccionado, "- Jornada", jornada.upper() + ":")
         for i, materia in enumerate(materias, 1):
             print(f"{i}. {materia['nombre']}")
-        
-        # Verificar si hay materias de Cívica (con búsqueda más flexible)
+
+        # Separar materias de Cívica del resto (búsqueda flexible)
         materias_civica = [m for m in materias if any(term in m['nombre'].lower() for term in ['civica', 'cívica', 'civico', 'cívico'])]
-        
-        # Si hay materias de Cívica, procesarlas primero
+        materias_restantes = [m for m in materias if m not in materias_civica]
+
+        # === BLOQUE ESPECIAL PARA CÍVICA ===
         if materias_civica:
             print("\n=== DETECTADA MATERIA DE CÍVICA ===")
             print("Se procesará automáticamente la materia de Cívica.")
-            
+
+            # Elegir modo de Cívica
+            modo_civica = input("\nModo de Cívica: ingrese 'd' para modo por defecto (todo SIEMPRE) o 'p' para usar notas personalizadas (A-/B+/B-). [d/p]: ").strip().lower()
+            usar_notas_personalizadas_civica = (modo_civica == 'p')
+            if usar_notas_personalizadas_civica:
+                print("\nCívica se procesará en modo BASADO EN NOTAS PERSONALIZADAS (A- => SIEMPRE, B+/B- => FRECUENTEMENTE).")
+            else:
+                print("\nCívica se procesará en modo POR DEFECTO (todos los indicadores en SIEMPRE).")
+
             for materia in materias_civica:
                 print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
-                
-                # Buscar la materia en la página
+
+                # Buscar la materia de Cívica en la tabla de la plataforma
                 if not seleccionar_materia(page, materia['nombre'], jornada, grado_seleccionado=grado_seleccionado):
                     print(f"No se pudo encontrar la materia {materia['nombre']}. Continuando con la siguiente...")
                     continue
-                
-                # Procesar cada trimestre para Cívica
+
+                # Preguntar trimestres para Cívica
                 trimestres_input = input("\nIngrese los números de trimestres para Cívica separados por comas (1-3), ejemplo '1,2': ")
-                trimestres = [int(t.strip()) for t in trimestres_input.split(',')]
-                
-                for trimestre_num in trimestres:
+                trimestres_civica = [int(t.strip()) for t in trimestres_input.split(',')]
+
+                for trimestre_num in trimestres_civica:
                     print(f"\n=== Procesando Cívica - Trimestre {trimestre_num} ===")
-                    procesar_civica(page, trimestre_num, grado_seleccionado)
-                
-                # Eliminar Cívica de la lista de materias a procesar
-                materias = [m for m in materias if m['nombre'] != materia['nombre']]
-                print("\n=== FINALIZADO PROCESAMIENTO DE CÍVICA ===\n")
-        
-        # Si no quedan más materias, terminar
+                    procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personalizadas=usar_notas_personalizadas_civica)
+
+            # Eliminar Cívica de la lista de materias a procesar con el flujo normal
+            materias = materias_restantes
+
+        # === FLUJO NORMAL PARA EL RESTO DE MATERIAS (manteniendo tu lógica anterior) ===
         if not materias:
             print("No hay más materias para procesar.")
             return True
-            
-        # Preguntar por las demás materias
+
         print("\nMaterias restantes para procesar:")
         for i, materia in enumerate(materias, 1):
             print(f"{i}. {materia['nombre']}")
-            
+
         seleccion = input("\n¿Desea procesar las materias restantes? (s/n): ").lower()
         if seleccion != 's':
             print("Proceso cancelado por el usuario.")
             return False
-            
-        # Procesar las demás materias
-        for i, materia in enumerate(materias, 1):
-            # Verificar si es Cívica (con búsqueda más flexible)
-            es_civica = any(term in materia['nombre'].lower() for term in ['civica', 'cívica', 'civico', 'cívico'])
-            
+
+        for materia in materias:
+            # Ya se excluyeron las materias de Cívica; aquí solo llegan materias normales
             print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
-            
+
             # Buscar la materia en la página
             if not seleccionar_materia(page, materia['nombre'], jornada, grado_seleccionado=grado_seleccionado):
                 print(f"No se pudo encontrar la materia {materia['nombre']}. Continuando con la siguiente...")
                 continue
-            
-            if es_civica:
-                # Procesar Cívica de manera especial
-                trimestres_input = input("\nIngrese los números de trimestres para Cívica separados por comas (1-3), ejemplo '1,2': ")
-                trimestres = [int(t.strip()) for t in trimestres_input.split(',')]
-                
-                for trimestre_num in trimestres:
-                    print(f"\n=== Procesando Cívica - Trimestre {trimestre_num} ===")
-                    procesar_civica(page, trimestre_num, grado_seleccionado)
-                continue
-            
-            # Para materias que no son Cívica
+
+            # Preguntar acción y trimestres
             accion = input("¿Qué acción desea realizar? (llenar/borrar): ").lower()
             trimestres_input = input("Ingrese los números de trimestres separados por comas (1-3), ejemplo '1,2': ")
-            trimestres = [int(t.strip()) for t in trimestres_input.split(',')]
-            
+            trimestres_materia = [int(t.strip()) for t in trimestres_input.split(',')]
+
             # Cargar el mapeo de calificaciones si es necesario
             mapeo_calificaciones = None
             if accion == 'llenar':
                 mapeo_calificaciones = crear_mapa_calificaciones('sb.xlsx')
-            
+
             # Preguntar qué grupo procesar
             opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado/grados_personalizados): ").lower()
-            
-            for trimestre_num in trimestres:
+
+            for trimestre_num in trimestres_materia:
                 print(f"\nSeleccionando Trimestre {trimestre_num}...")
-                
-                # Seleccionar el trimestre
-                if not seleccionar_trimestre(page, trimestre_num, grado_seleccionado, es_civica=es_civica):
+
+                # Seleccionar el trimestre (no es Cívica aquí)
+                if not seleccionar_trimestre(page, trimestre_num, grado_seleccionado, es_civica=False):
                     print(f"No se pudo seleccionar el trimestre {trimestre_num}. Continuando con el siguiente...")
                     continue
-                
+
                 # Procesar cada ámbito
                 for ambito in obtener_ambitos_usuario(materia):
                     print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
-                    
+
                     if opcion == "todos":
                         procesar_todos_los_estudiantes(
-                            page, 
-                            ambito, 
+                            page,
+                            ambito,
                             trimestre_num,
                             grado_seleccionado=grado_seleccionado,
                             accion=accion,
@@ -1162,8 +1215,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                         )
                     elif opcion == "buenos":
                         procesar_filas(
-                            page, 
-                            ambito, 
+                            page,
+                            ambito,
                             trimestre_num,
                             grado_seleccionado=grado_seleccionado,
                             nombres_excepciones=nombres_excepciones,
@@ -1175,8 +1228,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                         )
                     elif opcion == "malos":
                         procesar_filas(
-                            page, 
-                            ambito, 
+                            page,
+                            ambito,
                             trimestre_num,
                             grado_seleccionado=grado_seleccionado,
                             nombres_excepciones=nombres_excepciones,
@@ -1188,8 +1241,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                         )
                     elif opcion == "personalizado":
                         procesar_filas(
-                            page, 
-                            ambito, 
+                            page,
+                            ambito,
                             trimestre_num,
                             grado_seleccionado=grado_seleccionado,
                             nombres_excepciones=nombres_excepciones,
@@ -1202,8 +1255,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                     elif opcion == "grados_personalizados":
                         from academic_data import personalized_grades
                         procesar_filas(
-                            page, 
-                            ambito, 
+                            page,
+                            ambito,
                             trimestre_num,
                             grado_seleccionado=grado_seleccionado,
                             nombres_excepciones=None,
@@ -1216,18 +1269,18 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                     else:
                         print("Opción no válida. Continuando con la siguiente materia...")
                         break
-                                
+
                     # Pequeña pausa entre ámbitos
                     time.sleep(1)
-                
+
                 # Pequeña pausa entre trimestres
                 time.sleep(1)
             
             # Pequeña pausa entre materias
-            time.sleep(1)
-        
+                time.sleep(1)
+
         print("\nProceso de scraping finalizado para todas las materias seleccionadas.")
-        
+
     except Exception as e:
         print(f"Error en obtener_ambito_y_scrapear: {str(e)}")
         import traceback
