@@ -1,6 +1,3 @@
-# Ignorar todos los archivos que empiecen con "credenciales_"
-credenciales_*
-
 # No ignorar el archivo "credenciales_example.data"
 !credenciales_example.data
 

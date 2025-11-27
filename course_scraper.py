@@ -193,10 +193,11 @@ def seleccionar_trimestre(page, trimestre_num, grado_seleccionado, es_civica=Fal
         print(f"Error inesperado al seleccionar trimestre: {str(e)}")
         return False
 
-def seleccionar_materia(page, nombre, jornada, timeout=20000):
+def seleccionar_materia(page, nombre, jornada, grado_seleccionado=None, timeout=20000):
     try:
         normalized_nombre = normalize_text(nombre)
         normalized_jornada = normalize_text(jornada)
+        normalized_grado_param = normalize_text(grado_seleccionado) if grado_seleccionado else ""
         print(f"Buscando materia que contenga '{normalized_nombre}' con jornada '{normalized_jornada}'")
 
         # Navegar a la página de calificaciones
@@ -234,13 +235,30 @@ def seleccionar_materia(page, nombre, jornada, timeout=20000):
                     grado_text = normalize_text(grado_element.inner_text())
                     jornada_text = normalize_text(jornada_element.inner_text())
 
-                    # Verificar si coincide con la materia buscada
-                    if normalized_nombre in asignatura_text and normalized_jornada in jornada_text:
-                        print(f"Coincidencia encontrada en la página {pagina_actual}.")
-                        boton_editar = fila.query_selector('button.btn-warning')
-                        if boton_editar:
-                            boton_editar.click()
-                            return True
+                    # Logs de depuración para entender por qué no se encuentra la fila
+                    print("  - Fila encontrada:")
+                    print(f"    asignatura_text = '{asignatura_text}'")
+                    print(f"    grado_text      = '{grado_text}'")
+                    print(f"    jornada_text    = '{jornada_text}'")
+
+                    coincide_materia = normalized_nombre in asignatura_text and normalized_jornada in jornada_text
+                    if not coincide_materia:
+                        continue
+
+                    # Filtrar por grado cuando se proporcione grado_seleccionado
+                    if normalized_grado_param:
+                        # Caso especial: para INICIAL no filtramos por el texto del grado,
+                        # ya que la plataforma puede mostrar "GRUPO DE 4 AÑOS", "INCIAL", etc.
+                        # Solo usamos materia + jornada para identificar la fila.
+                        if normalized_grado_param != "inicial":
+                            if normalized_grado_param not in grado_text:
+                                continue
+
+                    print(f"Coincidencia encontrada en la página {pagina_actual}.")
+                    boton_editar = fila.query_selector('button.btn-warning')
+                    if boton_editar:
+                        boton_editar.click()
+                        return True
 
             # Verificar si hay más páginas
             try:
@@ -1055,7 +1073,7 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                 print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
                 
                 # Buscar la materia en la página
-                if not seleccionar_materia(page, materia['nombre'], jornada):
+                if not seleccionar_materia(page, materia['nombre'], jornada, grado_seleccionado=grado_seleccionado):
                     print(f"No se pudo encontrar la materia {materia['nombre']}. Continuando con la siguiente...")
                     continue
                 
@@ -1094,7 +1112,7 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
             print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
             
             # Buscar la materia en la página
-            if not seleccionar_materia(page, materia['nombre'], jornada):
+            if not seleccionar_materia(page, materia['nombre'], jornada, grado_seleccionado=grado_seleccionado):
                 print(f"No se pudo encontrar la materia {materia['nombre']}. Continuando con la siguiente...")
                 continue
             

@@ -212,26 +212,36 @@ trimestres_excepciones = {
 
 # Personalized student grades
 personalized_grades = {
-    # A- students
-    "Arequipa Brianna": "A+",
-    "Chica Deith": "A+",
-    "Chila Angello": "A+",
-    "Figueroa Alaia": "A+",
-    "Mero Asher": "A+",
-    "Vela Helen": "A+",
-    "Vozmediano Julián": "A+",
-    
-    # B+ students
-    "Hidrovo Nayla": "B+",
-    "Ibarra Keisy": "B+",
-    "Risco Arturo": "B+",
-    "Risco Sofía": "B+",
-    "Sabando Liam": "B+",
-    "Vélez Ian": "B+",
-    "Vélez Danna": "B+",
-    
-    # ignorar
-    "Briones Pacheco": "NE",
-    "Paiva Cordero": "NE",
-    "Rodríguez Sinchuguani": "NE"
+    # A- Students (Rendimiento Muy Bueno)
+    "Haro Moreira Eithan Ricardo": "A-",
+    "Macias Zambrano Kimberly Amelia": "A-",
+    "Marquez Cagua Adry Aidana": "A-",
+    "Medranda Mendoza Gabriel Ivan": "A-",
+    "Moreira Loor Jerry Darkiel": "A-",
+    "Napa Vergara Lian Isaac": "A-",
+    "Lozano Cheme Aitana Ainara": "A-",
+    "Ortiz Garcia Keily Sarahi": "A-",
+    "Peña Roman Cesar Caleb": "A-",
+    "Quiroz Ibarra Samary Paulette": "A-",
+    "Quiroz Sanchez Emma Franyeli": "A-",
+    "Rodriguez Ocando Isaia De Jesus": "A-",
+    "Villegas Velez John Alejandro": "A-",
+
+    # B+ Students (Rendimiento Bueno)
+    "Coox Vargas Yusleidi Yaret": "B+",
+    "Farias Arrunategui Izael Alejandro": "B+",
+    "Garcia Wonsang Jean Piere": "B+",
+    "Loor Zambrano Maximiliano Said": "B+",
+    "Lopez Baluarte Ashly Yareli": "B+",
+    "Olives Aveiga Joel Santiago": "B+",
+    "Palacios Mero Luis Mateus": "B+",
+    "Patron Gaspar Eydan Mateo": "B+",
+    "Patron Gracia Daren Daniel": "B+",
+    "Zambrano Cagua Aynara Raquel": "B+",
+
+    # B- Students (Rendimiento Regular)
+    "Intriago Sosa Carlos Isaias": "B-",
+
+    # Sin Nota / Ignorar
+    "Sanchez Zambrano Victor Josias": "NE"
 }
