@@ -104,9 +104,8 @@ def obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante=None):
             # print(f"    - Encontrada excepción para {nombre_estudiante}: {nota_personalizada}")
             return nota_personalizada
 
-    # 2. Si el grupo es 'lista', buscar en la lista bulk
-    # NOTA: 'todos' no busca en la lista bulk por petición explícita
-    if nombre_estudiante and grupo == "lista":
+    # 2. Si el grupo es 'lista' o 'todos', buscar en la lista bulk
+    if nombre_estudiante and (grupo == "lista" or grupo == "todos"):
         nota_lista = _buscar_calificacion_en_lista_bulk(nombre_estudiante)
         if nota_lista:
             # print(f"    - Encontrado en lista bulk para {nombre_estudiante}: {nota_lista}")
@@ -506,7 +505,10 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     # Si no se encontró calificación, usar valores por defecto según el grupo
                     if not calificacion:
                         calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
-                        print(f"  - No se encontró calificación en el archivo. Usando valor por defecto: {calificacion}")
+                        if calificacion != "NE":
+                            print(f"  - Calificación calculada (Lista/Defecto): {calificacion}")
+                        else:
+                            print(f"  - No se encontró calificación (NE).")
                     else:
                         print(f"  - Calificación encontrada en archivo: {calificacion}")
                     
@@ -689,7 +691,10 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
 
                         if not calificacion:
                             calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
-                            print(f"  - No se encontró calificación en el archivo. Usando valor por defecto de academic_data: {calificacion}")
+                            if calificacion != "NE":
+                                print(f"  - Calificación calculada (Lista/Defecto): {calificacion}")
+                            else:
+                                print(f"  - No se encontró calificación (NE).")
                         else:
                             print(f"  - Calificación encontrada en archivo: {calificacion}")
 
@@ -1266,7 +1271,7 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                 print("\nGrado con mapeo de Excel (2do-7mo): se procesarán TODOS los estudiantes usando las notas del archivo.")
             else:
                 # Preguntar qué grupo procesar solo para Inicial y 1ro
-                opcion = input("¿Qué grupo desea procesar? (todos/buenos/malos/personalizado/grados_personalizados): ").lower()
+                opcion = input("¿Qué grupo desea procesar? (todos/personalizado/lista): ").lower()
 
             for trimestre_num in trimestres_materia:
                 print(f"\nSeleccionando Trimestre {trimestre_num}...")
@@ -1283,26 +1288,13 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                 else:
                     ambitos = obtener_ambitos_usuario(materia)
 
-                print("\nSeleccione qué estudiantes calificar:")
-                print("1. Defecto (Todos con excepciones)")
-                print("2. Solo Excepciones (nombres_estudiantes.py)")
-                print("3. Lista Bulk (academic_data.py)")
-                
-                opcion_grupo = input("Ingrese el número de opción (1-3): ").strip()
-                
-                grupo_seleccionado = "todos"
-                if opcion_grupo == "2":
-                    grupo_seleccionado = "personalizado" # Solo procesa los de nombres_estudiantes.py
-                elif opcion_grupo == "3":
-                    grupo_seleccionado = "lista" # Solo procesa los de academic_data.py
-                
                 # Procesar estudiantes
-                print(f"\nIniciando proceso para: {grupo_seleccionado}")
+                print(f"\nIniciando proceso para: {opcion}")
                 
                 for ambito in ambitos:
                     print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
                     # Lógica de procesamiento según la opción
-                    if grupo_seleccionado == "todos":
+                    if opcion == "todos":
                         # Opción 1: Procesa TODOS. 
                         # obtener_calificacion_default se encarga de ver si es excepción o lista.
                         procesar_filas(
@@ -1316,7 +1308,7 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             mapeo_calificaciones=mapeo_calificaciones,
                             materia_nombre=materia['nombre']
                         )
-                    elif grupo_seleccionado == "personalizado":
+                    elif opcion == "personalizado":
                         # Opción 2: Solo procesa los que están en nombres_estudiantes.py
                         procesar_filas(
                             page,
@@ -1329,7 +1321,7 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             mapeo_calificaciones=mapeo_calificaciones,
                             materia_nombre=materia['nombre']
                         )
-                    elif grupo_seleccionado == "lista":
+                    elif opcion == "lista":
                         # Opción 3: Solo procesa los que están en academic_data.py (lista bulk)
                         procesar_filas(
                             page,
@@ -1343,8 +1335,18 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                             materia_nombre=materia['nombre']
                         )
                     else:
-                        print("Opción no válida. Continuando con la siguiente materia...")
-                        break
+                        print(f"Opción '{opcion}' no reconocida como grupo válido. Continuando como 'todos'...")
+                        procesar_filas(
+                            page,
+                            ambito,
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            nombres_excepciones=None,
+                            accion=accion,
+                            grupo="todos",
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
+                        )
 
                     # Pequeña pausa entre ámbitos
                     time.sleep(1)
