@@ -4,19 +4,16 @@ from bs4 import BeautifulSoup
 import time
 import unicodedata
 import re
-from academic_data import (
-    trimestres,
-    trimestres_borrar,
-    trimestres_borrar_malos,
-    trimestres_buenos_estudiantes,
-    trimestres_malos_estudiantes,
-    trimestres_excepciones,
-    personalized_grades
-)
 from ambitos import obtener_ambitos_usuario
 from trimesters import obtener_trimestres_usuario
 from utils import obtener_materias_usuario
-from nombres_estudiantes import nombres_buenos, nombres_malos, nombres_excepciones, notas_personalizadas
+from nombres_estudiantes import (
+    notas_personalizadas,
+    trimestres,
+    trimestres_borrar,
+    trimestres_excepciones,
+    lista_estudiantes_notas
+)
 from hola import crear_mapa_calificaciones  # Importar la función de mapeo de calificaciones
 import pandas as pd
 
@@ -66,40 +63,93 @@ def cerrar_dialogos_confirmacion(page, contexto=""):
             print(f"    - Error al cerrar confirmación: {str(e)}")
             break
 
-def obtener_calificacion_default(grupo, trimestre_num):
-    """Obtiene la calificación por defecto según el grupo y trimestre."""
-    mapeos = {
-        "buenos": trimestres_buenos_estudiantes,
-        "malos": trimestres_malos_estudiantes,
-        "personalizado": trimestres_excepciones,
-        "grados_personalizados": trimestres
-    }
+def _buscar_calificacion_en_lista_bulk(nombre_estudiante):
+    """Busca coincidencias aproximadas dentro de lista_estudiantes_notas."""
+    nombre_normalizado = normalize_text(nombre_estudiante)
+    if not nombre_normalizado:
+        return None
 
-    data = mapeos.get(grupo, trimestres)
+    tokens_nombre = set(nombre_normalizado.split())
+
+    for clave, nota in lista_estudiantes_notas.items():
+        clave_normalizada = normalize_text(clave)
+        if not clave_normalizada:
+            continue
+
+        coincidencia = False
+        if clave_normalizada == nombre_normalizado:
+            coincidencia = True
+        else:
+            tokens_clave = clave_normalizada.split()
+            if tokens_clave and all(token in tokens_nombre for token in tokens_clave):
+                coincidencia = True
+        
+        if coincidencia:
+            return nota
+
+    return None
+
+def obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante=None):
+    """Obtiene la calificación por defecto según el grupo y trimestre.
+    
+    Prioridad:
+    1. Excepciones (nombres_estudiantes.py -> notas_personalizadas)
+    2. Lista Bulk (academic_data.py -> lista_estudiantes_notas)
+    3. Defecto (academic_data.py -> trimestres)
+    """
+    # 1. Si tenemos el nombre del estudiante, buscar primero en notas personalizadas (Excepciones)
+    if nombre_estudiante:
+        nota_personalizada, _ = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
+        if nota_personalizada and nota_personalizada != "NE":
+            # print(f"    - Encontrada excepción para {nombre_estudiante}: {nota_personalizada}")
+            return nota_personalizada
+
+    # 2. Si el grupo es 'lista', buscar en la lista bulk
+    # NOTA: 'todos' no busca en la lista bulk por petición explícita
+    if nombre_estudiante and grupo == "lista":
+        nota_lista = _buscar_calificacion_en_lista_bulk(nombre_estudiante)
+        if nota_lista:
+            # print(f"    - Encontrado en lista bulk para {nombre_estudiante}: {nota_lista}")
+            return nota_lista
+
+    # 3. Nota por defecto según el trimestre
+    # Mapeo simple: solo 'personalizado' tiene un trato especial en cuanto a diccionario fuente
+    # pero 'todos', 'lista' y cualquier otro usan 'trimestres' por defecto.
+    data = trimestres
+    if grupo == "personalizado":
+        data = trimestres_excepciones
+
     registro = data.get(trimestre_num)
     if registro and len(registro) > 1:
         return registro[1]
     return "NE"
 
-def _buscar_calificacion_personalizada(nombre_estudiante):
-    """Busca coincidencias aproximadas dentro de personalized_grades usando tokens del nombre."""
+def _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num=None):
+    """Busca coincidencias aproximadas dentro de notas_personalizadas usando tokens del nombre."""
     nombre_normalizado = normalize_text(nombre_estudiante)
     if not nombre_normalizado:
         return None, None
 
     tokens_nombre = set(nombre_normalizado.split())
 
-    for clave, nota in personalized_grades.items():
+    for clave, notas_trimestrales in notas_personalizadas.items():
         clave_normalizada = normalize_text(clave)
         if not clave_normalizada:
             continue
 
+        coincidencia = False
         if clave_normalizada == nombre_normalizado:
-            return nota, clave
-
-        tokens_clave = clave_normalizada.split()
-        if tokens_clave and all(token in tokens_nombre for token in tokens_clave):
-            return nota, clave
+            coincidencia = True
+        else:
+            tokens_clave = clave_normalizada.split()
+            if tokens_clave and all(token in tokens_nombre for token in tokens_clave):
+                coincidencia = True
+        
+        if coincidencia:
+            if trimestre_num is not None:
+                return notas_trimestrales.get(trimestre_num, "NE"), clave
+            else:
+                return notas_trimestrales, clave
 
     return None, None
 
@@ -313,7 +363,7 @@ def seleccionar_materia(page, nombre, jornada, grado_seleccionado=None, timeout=
         return False
 
 def procesar_filas(page, ambito, trimestre_num, grado_seleccionado, nombres_excepciones=None, 
-                 nombres_buenos=None, nombres_malos=None, accion="llenar", grupo="todos", mapeo_calificaciones=None, materia_nombre=None):
+                 accion="llenar", grupo="todos", mapeo_calificaciones=None, materia_nombre=None):
     """Procesa las filas de estudiantes según el grupo seleccionado.
     
     Args:
@@ -322,10 +372,8 @@ def procesar_filas(page, ambito, trimestre_num, grado_seleccionado, nombres_exce
         trimestre_num: Número de trimestre
         grado_seleccionado: Grado seleccionado (ej: '2do', '3ro', etc.)
         nombres_excepciones: Lista de nombres de estudiantes a procesar (para grupo personalizado)
-        nombres_buenos: Lista de nombres de estudiantes "buenos"
-        nombres_malos: Lista de nombres de estudiantes "malos"
         accion: 'llenar' para ingresar notas, 'borrar' para limpiar
-        grupo: 'todos', 'buenos', 'malos' o 'personalizado'
+        grupo: 'todos', 'personalizado' o 'lista'
         mapeo_calificaciones: Diccionario con las calificaciones de los estudiantes
     """
     try:
@@ -338,14 +386,14 @@ def procesar_filas(page, ambito, trimestre_num, grado_seleccionado, nombres_exce
             # Nueva interfaz para grados 2-7
             return _procesar_filas_nueva_interfaz(
                 page, ambito, trimestre_num, grado_seleccionado, 
-                nombres_excepciones, nombres_buenos, nombres_malos, accion, grupo,
+                nombres_excepciones, accion, grupo,
                 mapeo_calificaciones, materia_nombre  # Pasar el nombre de la materia
             )
         else:
             # Antigua interfaz para Inicial y 1ro
             return _procesar_filas_antigua_interfaz(
                 page, ambito, trimestre_num, grado_seleccionado, 
-                nombres_excepciones, nombres_buenos, nombres_malos, accion, grupo,
+                nombres_excepciones, accion, grupo,
                 mapeo_calificaciones
             )
             
@@ -356,7 +404,7 @@ def procesar_filas(page, ambito, trimestre_num, grado_seleccionado, nombres_exce
         return False
 
 def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_seleccionado, 
-                                nombres_excepciones, nombres_buenos, nombres_malos, accion, grupo,
+                                nombres_excepciones, accion, grupo,
                                 mapeo_calificaciones=None, materia_nombre=None):
     """Procesa las filas usando la nueva interfaz con pestañas (grados 2-7) con manejo de paginación.
     Args:
@@ -402,17 +450,11 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     nombre_normalizado = normalize_text(nombre_estudiante)
                     
                     # Verificar si el estudiante debe ser procesado según el grupo
-                    if grupo == "buenos" and (not nombres_buenos or not any(normalize_text(n) == nombre_normalizado for n in nombres_buenos)):
-                        print(f"  - No está en el grupo 'buenos'. Saltando...")
-                        continue
-                    elif grupo == "malos" and (not nombres_malos or not any(normalize_text(n) == nombre_normalizado for n in nombres_malos)):
-                        print(f"  - No está en el grupo 'malos'. Saltando...")
-                        continue
-                    elif grupo == "personalizado" and (not nombres_excepciones or not any(normalize_text(n) == nombre_normalizado for n in nombres_excepciones)):
+                    if (grupo == "personalizado" or grupo == "lista") and (not nombres_excepciones or not any(normalize_text(n) == nombre_normalizado for n in nombres_excepciones)):
                         print(f"  - No está en la lista personalizada. Saltando...")
                         continue
                     elif grupo == "grados_personalizados":
-                        calif_personalizada, clave_match = _buscar_calificacion_personalizada(nombre_estudiante)
+                        calif_personalizada, clave_match = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
                         if not calif_personalizada:
                             print("  - No está en personalized_grades. Saltando...")
                             continue
@@ -422,7 +464,7 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     # Buscar la calificación en el mapeo
                     calificacion = None
                     if grupo == "grados_personalizados":
-                        calificacion, _ = _buscar_calificacion_personalizada(nombre_estudiante)
+                        calificacion, _ = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
 
                     if mapeo_calificaciones and not calificacion:
                         # Determinar la clave a usar para buscar la calificación
@@ -463,7 +505,7 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     
                     # Si no se encontró calificación, usar valores por defecto según el grupo
                     if not calificacion:
-                        calificacion = obtener_calificacion_default(grupo, trimestre_num)
+                        calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
                         print(f"  - No se encontró calificación en el archivo. Usando valor por defecto: {calificacion}")
                     else:
                         print(f"  - Calificación encontrada en archivo: {calificacion}")
@@ -564,7 +606,7 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
         return False
 
 def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccionado, 
-                                   nombres_excepciones, nombres_buenos, nombres_malos, accion, grupo,
+                                   nombres_excepciones, accion, grupo,
                                    mapeo_calificaciones=None):
     """Procesa las filas usando la antigua interfaz con dropdown (Inicial y 1ro)."""
     try:
@@ -616,17 +658,11 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
 
                         nombre_normalizado = normalize_text(nombre_estudiante)
 
-                        if grupo == "buenos" and (not nombres_buenos or not any(normalize_text(n) == nombre_normalizado for n in nombres_buenos)):
-                            print("  - No está en el grupo 'buenos'. Saltando...")
-                            continue
-                        elif grupo == "malos" and (not nombres_malos or not any(normalize_text(n) == nombre_normalizado for n in nombres_malos)):
-                            print("  - No está en el grupo 'malos'. Saltando...")
-                            continue
-                        elif grupo == "personalizado" and (not nombres_excepciones or not any(normalize_text(n) == nombre_normalizado for n in nombres_excepciones)):
+                        if (grupo == "personalizado" or grupo == "lista") and (not nombres_excepciones or not any(normalize_text(n) == nombre_normalizado for n in nombres_excepciones)):
                             print("  - No está en la lista personalizada. Saltando...")
                             continue
                         elif grupo == "grados_personalizados":
-                            calif_personalizada, clave_match = _buscar_calificacion_personalizada(nombre_estudiante)
+                            calif_personalizada, clave_match = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
                             if not calif_personalizada:
                                 print("  - No está en personalized_grades. Saltando...")
                                 continue
@@ -635,7 +671,7 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
 
                         calificacion = None
                         if grupo == "grados_personalizados":
-                            calificacion, _ = _buscar_calificacion_personalizada(nombre_estudiante)
+                            calificacion, _ = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
 
                         if mapeo_calificaciones and not calificacion:
                             for nombre_archivo, califs in mapeo_calificaciones.items():
@@ -652,7 +688,7 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
                                             break
 
                         if not calificacion:
-                            calificacion = obtener_calificacion_default(grupo, trimestre_num)
+                            calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
                             print(f"  - No se encontró calificación en el archivo. Usando valor por defecto de academic_data: {calificacion}")
                         else:
                             print(f"  - Calificación encontrada en archivo: {calificacion}")
@@ -779,9 +815,7 @@ def procesar_todos_los_estudiantes(page, ambito, trimestre_num, grado_selecciona
         ambito, 
         trimestre_num,
         grado_seleccionado=grado_seleccionado,
-        nombres_excepciones=nombres_excepciones, 
-        nombres_buenos=nombres_buenos,
-        nombres_malos=nombres_malos,
+        nombres_excepciones=None,
         accion=accion, 
         grupo="todos",
         mapeo_calificaciones=mapeo_calificaciones,
@@ -797,17 +831,18 @@ def procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personal
       - B+, B- => FRECUENTEMENTE
       - cualquier otra nota => SIEMPRE (comportamiento por defecto)
     """
-    def _obtener_etiqueta_civica(nombre_estudiante):
+    def _obtener_etiqueta_civica(nombre_estudiante, trimestre_num):
         if not usar_notas_personalizadas:
             return "SIEMPRE"
 
-        nota, clave = _buscar_calificacion_personalizada(nombre_estudiante)
-        if not nota:
+        nota, clave = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
+        if not nota or nota == "NE":
             print("    - No hay nota personalizada para Cívica, usando 'SIEMPRE'.")
             return "SIEMPRE"
 
         print(f"    - Nota personalizada para Cívica ({clave}): {nota}")
 
+        # La nota puede ser un string "A-", "B+", etc.
         if nota == "A-":
             return "SIEMPRE"
         if nota in ("B+", "B-"):
@@ -907,7 +942,7 @@ def procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personal
                     page.wait_for_selector('select.form-control.wide-select', state='visible', timeout=5000)
                     
                     # Determinar la etiqueta a usar para este estudiante
-                    etiqueta_objetivo = _obtener_etiqueta_civica(nombre_estudiante)
+                    etiqueta_objetivo = _obtener_etiqueta_civica(nombre_estudiante, trimestre_num)
                     print(f"    - Etiqueta objetivo para Cívica: {etiqueta_objetivo}")
 
                     # Si la etiqueta es 'NE', no llenar nada y pasar al siguiente estudiante
@@ -1215,12 +1250,18 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
 
             # Cargar el mapeo de calificaciones si es necesario
             mapeo_calificaciones = None
-            if accion == 'llenar':
-                mapeo_calificaciones = crear_mapa_calificaciones('sb.xlsx')
+            # Verificar si es un grado que usa Excel (nueva interfaz 2do-7mo)
+            es_grado_nuevo = any(str(g) in str(grado_seleccionado) for g in range(2, 8))
+
+            if accion == 'llenar' and es_grado_nuevo:
+                nombre_archivo = input("Ingrese el nombre del archivo de Excel a procesar [Default: sb.xlsx]: ").strip()
+                if not nombre_archivo:
+                    nombre_archivo = 'sb.xlsx'
+                mapeo_calificaciones = crear_mapa_calificaciones(nombre_archivo)
 
             # Para grados 2do en adelante (nueva interfaz con Excel), usar siempre todos los estudiantes
             # y las notas del archivo, sin preguntar grupo
-            if any(str(g) in str(grado_seleccionado) for g in range(2, 8)):
+            if es_grado_nuevo:
                 opcion = "todos"
                 print("\nGrado con mapeo de Excel (2do-7mo): se procesarán TODOS los estudiantes usando las notas del archivo.")
             else:
@@ -1242,73 +1283,62 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
                 else:
                     ambitos = obtener_ambitos_usuario(materia)
 
+                print("\nSeleccione qué estudiantes calificar:")
+                print("1. Defecto (Todos con excepciones)")
+                print("2. Solo Excepciones (nombres_estudiantes.py)")
+                print("3. Lista Bulk (academic_data.py)")
+                
+                opcion_grupo = input("Ingrese el número de opción (1-3): ").strip()
+                
+                grupo_seleccionado = "todos"
+                if opcion_grupo == "2":
+                    grupo_seleccionado = "personalizado" # Solo procesa los de nombres_estudiantes.py
+                elif opcion_grupo == "3":
+                    grupo_seleccionado = "lista" # Solo procesa los de academic_data.py
+                
+                # Procesar estudiantes
+                print(f"\nIniciando proceso para: {grupo_seleccionado}")
+                
                 for ambito in ambitos:
                     print(f"Procesando Trimestre {trimestre_num} - {ambito}...")
-
-                    if opcion == "todos":
-                        procesar_todos_los_estudiantes(
-                            page,
-                            ambito,
-                            trimestre_num,
-                            grado_seleccionado=grado_seleccionado,
-                            accion=accion,
-                            mapeo_calificaciones=mapeo_calificaciones,
-                            materia_nombre=materia['nombre']
-                        )
-                    elif opcion == "buenos":
-                        procesar_filas(
-                            page,
-                            ambito,
-                            trimestre_num,
-                            grado_seleccionado=grado_seleccionado,
-                            nombres_excepciones=nombres_excepciones,
-                            nombres_buenos=nombres_buenos,
-                            nombres_malos=None,
-                            accion=accion,
-                            grupo="buenos",
-                            mapeo_calificaciones=mapeo_calificaciones,
-                            materia_nombre=materia['nombre']
-                        )
-                    elif opcion == "malos":
-                        procesar_filas(
-                            page,
-                            ambito,
-                            trimestre_num,
-                            grado_seleccionado=grado_seleccionado,
-                            nombres_excepciones=nombres_excepciones,
-                            nombres_buenos=None,
-                            nombres_malos=nombres_malos,
-                            accion=accion,
-                            grupo="malos",
-                            mapeo_calificaciones=mapeo_calificaciones,
-                            materia_nombre=materia['nombre']
-                        )
-                    elif opcion == "personalizado":
-                        procesar_filas(
-                            page,
-                            ambito,
-                            trimestre_num,
-                            grado_seleccionado=grado_seleccionado,
-                            nombres_excepciones=nombres_excepciones,
-                            nombres_buenos=None,
-                            nombres_malos=None,
-                            accion=accion,
-                            grupo="personalizado",
-                            mapeo_calificaciones=mapeo_calificaciones,
-                            materia_nombre=materia['nombre']
-                        )
-                    elif opcion == "grados_personalizados":
-                        from academic_data import personalized_grades
+                    # Lógica de procesamiento según la opción
+                    if grupo_seleccionado == "todos":
+                        # Opción 1: Procesa TODOS. 
+                        # obtener_calificacion_default se encarga de ver si es excepción o lista.
                         procesar_filas(
                             page,
                             ambito,
                             trimestre_num,
                             grado_seleccionado=grado_seleccionado,
                             nombres_excepciones=None,
-                            nombres_buenos=list(personalized_grades.keys()),
-                            nombres_malos=None,
                             accion=accion,
-                            grupo="grados_personalizados",
+                            grupo="todos",
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
+                        )
+                    elif grupo_seleccionado == "personalizado":
+                        # Opción 2: Solo procesa los que están en nombres_estudiantes.py
+                        procesar_filas(
+                            page,
+                            ambito,
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            nombres_excepciones=list(notas_personalizadas.keys()),
+                            accion=accion,
+                            grupo="personalizado", # Clave para filtrar en el bucle
+                            mapeo_calificaciones=mapeo_calificaciones,
+                            materia_nombre=materia['nombre']
+                        )
+                    elif grupo_seleccionado == "lista":
+                        # Opción 3: Solo procesa los que están en academic_data.py (lista bulk)
+                        procesar_filas(
+                            page,
+                            ambito,
+                            trimestre_num,
+                            grado_seleccionado=grado_seleccionado,
+                            nombres_excepciones=list(lista_estudiantes_notas.keys()), # Usamos este parametro para filtrar
+                            accion=accion,
+                            grupo="lista", # Usamos "lista" para activar el filtro de nombres_excepciones y busqueda bulk
                             mapeo_calificaciones=mapeo_calificaciones,
                             materia_nombre=materia['nombre']
                         )

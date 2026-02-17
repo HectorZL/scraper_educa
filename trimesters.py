@@ -1,5 +1,5 @@
 
-from academic_data import trimestres
+from nombres_estudiantes import trimestres
 
 def obtener_trimestres_usuario():
     while True:
