@@ -48,15 +48,26 @@ def volver_a_primera_pagina(page):
 
 def cerrar_dialogos_confirmacion(page, contexto=""):
     """Cierra todos los modales de SweetAlert en cola para evitar bloqueos."""
-    while True:
+    max_intentos = 3
+    intentos = 0
+    while intentos < max_intentos:
         try:
-            confirm_button = page.wait_for_selector('button.swal2-confirm', timeout=1500)
+            confirm_button = page.wait_for_selector('button.swal2-confirm', state='visible', timeout=1000)
             if not confirm_button:
                 break
             label = (confirm_button.inner_text() or "").strip() or "Confirmar"
             page.evaluate("(btn) => btn.click()", confirm_button)
+            
             sufijo = f" ({contexto})" if contexto else ""
             print(f"    - Botón '{label}' presionado{sufijo}")
+            
+            # Esperar a que el modal desaparezca o pequeña pausa para evitar loops rápidos
+            try:
+                page.wait_for_selector('button.swal2-confirm', state='hidden', timeout=500)
+            except:
+                time.sleep(0.2)
+
+            intentos += 1
         except PlaywrightTimeoutError:
             break
         except Exception as e:
@@ -505,10 +516,7 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     # Si no se encontró calificación, usar valores por defecto según el grupo
                     if not calificacion:
                         calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
-                        if calificacion != "NE":
-                            print(f"  - Calificación calculada (Lista/Defecto): {calificacion}")
-                        else:
-                            print(f"  - No se encontró calificación (NE).")
+                        print(f"  - No se encontró calificación en el archivo. Usando valor por defecto: {calificacion}")
                     else:
                         print(f"  - Calificación encontrada en archivo: {calificacion}")
                     
@@ -691,10 +699,7 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
 
                         if not calificacion:
                             calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
-                            if calificacion != "NE":
-                                print(f"  - Calificación calculada (Lista/Defecto): {calificacion}")
-                            else:
-                                print(f"  - No se encontró calificación (NE).")
+                            print(f"  - No se encontró calificación en el archivo. Usando valor por defecto de academic_data: {calificacion}")
                         else:
                             print(f"  - Calificación encontrada en archivo: {calificacion}")
 
