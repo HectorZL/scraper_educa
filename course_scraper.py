@@ -105,15 +105,22 @@ def obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante=None):
     
     Prioridad:
     1. Excepciones (nombres_estudiantes.py -> notas_personalizadas)
+       - Si está en notas_personalizadas con NE/None/"", retorna None (omitir este estudiante)
     2. Lista Bulk (academic_data.py -> lista_estudiantes_notas)
     3. Defecto (academic_data.py -> trimestres)
     """
     # 1. Si tenemos el nombre del estudiante, buscar primero en notas personalizadas (Excepciones)
     if nombre_estudiante:
-        nota_personalizada, _ = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
-        if nota_personalizada and nota_personalizada != "NE":
-            # print(f"    - Encontrada excepción para {nombre_estudiante}: {nota_personalizada}")
-            return nota_personalizada
+        nota_personalizada, clave_encontrada = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
+        if clave_encontrada is not None:
+            # El estudiante SÍ está en notas_personalizadas
+            if nota_personalizada and nota_personalizada not in ("NE", ""):
+                # print(f"    - Encontrada excepción para {nombre_estudiante}: {nota_personalizada}")
+                return nota_personalizada
+            else:
+                # Está en notas_personalizadas pero con NE/None/"": omitir completamente
+                print(f"    - '{nombre_estudiante}' tiene nota '{nota_personalizada}' en notas_personalizadas. Omitiendo.")
+                return None
 
     # 2. Si el grupo es 'lista' o 'todos', buscar en la lista bulk
     if nombre_estudiante and (grupo == "lista" or grupo == "todos"):
@@ -516,6 +523,9 @@ def _procesar_filas_nueva_interfaz(page, ambito, trimestre_num, grado_selecciona
                     # Si no se encontró calificación, usar valores por defecto según el grupo
                     if not calificacion:
                         calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
+                        if calificacion is None:
+                            print(f"  - '{nombre_estudiante}' tiene NE/vacío en notas_personalizadas. Omitiendo.")
+                            continue
                         print(f"  - No se encontró calificación en el archivo. Usando valor por defecto: {calificacion}")
                     else:
                         print(f"  - Calificación encontrada en archivo: {calificacion}")
@@ -699,6 +709,9 @@ def _procesar_filas_antigua_interfaz(page, ambito, trimestre_num, grado_seleccio
 
                         if not calificacion:
                             calificacion = obtener_calificacion_default(grupo, trimestre_num, nombre_estudiante)
+                            if calificacion is None:
+                                print(f"  - '{nombre_estudiante}' tiene NE/vacío en notas_personalizadas. Omitiendo.")
+                                continue
                             print(f"  - No se encontró calificación en el archivo. Usando valor por defecto de academic_data: {calificacion}")
                         else:
                             print(f"  - Calificación encontrada en archivo: {calificacion}")

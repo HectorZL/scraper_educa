@@ -33,10 +33,25 @@ trimestres_excepciones = {
 }
 
 notas_personalizadas = {
-    normalize_text("CAGUA MURILLO ELIAN JARED"): {
+    normalize_text("FARIAS ARRUNATEGUI IZAEL ALEJANDRO"): {
+        1: "B+",
+        2: "B+",
+        3: "A-"
+    },
+    normalize_text("GARCIA WONSANG JEAN PIERE"): {
+        1: "B+",
+        2: "B+",
+        3: "A-"
+    },
+    normalize_text("INTRIAGO SOSA CARLOS ISAIAS"): {
         1: "B+",
         2: "B+",
         3: "B+"
+    },
+    normalize_text("SANCHEZ ZAMBRANO VICTOR JOSIAS"): {
+        1: "B+",
+        2: "B+",
+        3: "NE"
     }
 }
 
