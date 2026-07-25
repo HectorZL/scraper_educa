@@ -50,59 +50,27 @@ def crear_mapa_calificaciones(ruta_archivo: str) -> dict:
             engine='openpyxl'
         )
         
-        # Buscar la fila que contiene los encabezados
-        header_row = None
-        for i in range(min(20, len(df))):  # Buscar en las primeras 20 filas
-            row = df.iloc[i].astype(str).str.upper().str.strip()
-            # Verificar si alguna celda de la fila contiene 'APELLIDOS/NOMBRES'
-            if 'APELLIDOS/NOMBRES' in row.values:
-                header_row = i
+        # 1. Buscar la fila que contiene los nombres ('APELLIDOS/NOMBRES')
+        names_row_idx = None
+        names_col_idx = None
+        
+        # Buscar en las primeras 20 filas
+        for i in range(min(20, len(df))):
+            row_vals = df.iloc[i].astype(str).str.upper().str.strip().tolist()
+            if 'APELLIDOS/NOMBRES' in row_vals:
+                names_row_idx = i
+                names_col_idx = row_vals.index('APELLIDOS/NOMBRES')
                 break
         
-        if header_row is None:
-            print("No se encontró la fila de encabezados. Usando la primera fila.")
-            header_row = 0
+        if names_row_idx is None:
+            print("No se encontró la fila de 'APELLIDOS/NOMBRES'. Usando fila 10 como fallback.")
+            names_row_idx = 9
+            names_col_idx = 1
         
-        # Volver a leer el archivo con los encabezados correctos
-        df = pd.read_excel(
-            ruta_archivo,
-            sheet_name=hoja_seleccionada,
-            header=header_row,
-            engine='openpyxl'
-        )
-        
-        # Limpiar nombres de columnas
-        df.columns = df.columns.astype(str).str.upper().str.strip()
-        
-        # Buscar la columna de estudiantes
-        col_estudiante = None
-        posibles_nombres = ['APELLIDOS/NOMBRES', 'NOMBRE', 'ESTUDIANTE', 'ALUMNO']
-        for nombre in posibles_nombres:
-            if nombre in df.columns:
-                col_estudiante = nombre
-                break
-        
-        if not col_estudiante:
-            # Usar la primera columna no numérica
-            for col in df.columns:
-                if not pd.api.types.is_numeric_dtype(df[col]):
-                    col_estudiante = col
-                    break
-        
-        if not col_estudiante:
-            print("No se pudo identificar la columna de estudiantes.")
-            return {}
-        
-        print(f"\nColumna de estudiantes: {col_estudiante}")
-        
-        # Filtrar solo las columnas que necesitamos
-        columnas_necesarias = [col_estudiante]
-        
-        # Mapeo de variaciones de nombres de materias
+        # 2. Mapeo de variaciones de nombres de materias
         mapeo_materias = {
             'LENGUA': 'LENGUA Y LITERATURA',
             'LENGUAJE': 'LENGUA Y LITERATURA',
-            'LENGUA Y LIT': 'LENGUA Y LITERATURA',
             'MATEMATICAS': 'MATEMÁTICA',
             'MATE': 'MATEMÁTICA',
             'SOCIALES': 'ESTUDIOS SOCIALES',
@@ -111,74 +79,121 @@ def crear_mapa_calificaciones(ruta_archivo: str) -> dict:
             'CULTURAL': 'EDUCACIÓN CULTURAL Y ARTÍSTICA',
             'ARTE': 'EDUCACIÓN CULTURAL Y ARTÍSTICA',
             'ARTÍSTICA': 'EDUCACIÓN CULTURAL Y ARTÍSTICA',
-            'EDUCACION CULTURAL': 'EDUCACIÓN CULTURAL Y ARTÍSTICA',
+            'ARÍSTICA': 'EDUCACIÓN CULTURAL Y ARTÍSTICA', # Typo en Excel
             'FISICA': 'EDUCACIÓN FÍSICA',
-            'EDUCACION FISICA': 'EDUCACIÓN FÍSICA',
             'INGLES': 'INGLÉS',
             'CIVICA': 'CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA',
+            'INTEGRAAL': 'CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA',
             'ACOMPAÑAMIENTO': 'CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA',
+            'ACOMPANAMIENTO': 'CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA',
             'LECTURA': 'ANIMACIÓN A LA LECTURA',
+            'LECTUARA': 'ANIMACIÓN A LA LECTURA',
             'ANIMACION': 'ANIMACIÓN A LA LECTURA'
         }
         
-        # Normalizar nombres de materias
-        materias_encontradas = {}
-        for col in df.columns:
-            if col == col_estudiante:
-                continue
+        # 3. Detectar qué columna corresponde a cada materia
+        # Buscamos el nombre de la materia en las filas superiores
+        col_to_materia = {}
+        
+        # En sb2.xlsx, la fila 6 tiene los nombres de las materias
+        # La fila 7 tiene 'PROMEDIO' o 'CALIFICACIÓN' para las materias numéricas
+        row_materias = 6
+        row_detalles = 7
+        
+        if len(df) > row_materias:
+            row_vals_materias = df.iloc[row_materias].tolist()
+            for col_idx, val in enumerate(row_vals_materias):
+                cell_val = str(val).upper().strip()
+                materia_asignada = None
+                for key, mapped_val in mapeo_materias.items():
+                    if key in cell_val:
+                        materia_asignada = mapped_val
+                        break
                 
-            # Convertir a mayúsculas y limpiar
-            materia = str(col).upper().strip()
+                if materia_asignada:
+                    # Si es Cívica o Animación, el valor está en la columna actual (letras)
+                    if materia_asignada in ['CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA', 'ANIMACIÓN A LA LECTURA']:
+                        col_to_materia[col_idx] = materia_asignada
+                    else:
+                        # Para otras materias, buscar PROMEDIO o CALIFICACIÓN en las siguientes columnas de la fila 7
+                        found_col = False
+                        # Revisar desde la columna actual hasta encontrar el siguiente encabezado de materia o 6 columnas
+                        for offset in range(0, 7):
+                            if col_idx + offset >= df.shape[1]: break
+                            
+                            # Si es una columna nueva con otro nombre de materia, detener búsqueda
+                            if offset > 0:
+                                next_val = str(df.iloc[row_materias, col_idx + offset]).upper().strip()
+                                if next_val not in ('', 'NAN', 'NONE'): break
+                                
+                            label_detalle = str(df.iloc[row_detalles, col_idx + offset]).upper().strip()
+                            if 'PROMEDIO' in label_detalle or 'CALIFICACIÓN' in label_detalle:
+                                col_to_materia[col_idx + offset] = materia_asignada
+                                found_col = True
+                                break
+                        
+                        # Fallback: si no encontró PROMEDIO, usar la columna actual
+                        if not found_col:
+                            col_to_materia[col_idx] = materia_asignada
+
+        print(f"Materias detectadas en columnas: {col_to_materia}")
+        
+        # Función para mapear letras a palabras descriptivas
+        def mapear_calificacion_cualitativa(valor):
+            if not valor or pd.isna(valor):
+                return None
+            val_str = str(valor).upper().strip()
+            if 'A+' in val_str or 'A-' in val_str or val_str == 'A':
+                return 'SIEMPRE'
+            if 'B+' in val_str or 'B-' in val_str or val_str == 'B':
+                return 'FRECUENTEMENTE'
+            if any(char in val_str for char in ['C', 'D', 'E']):
+                return 'OCASIONALMENTE'
+            return valor
+
+        # 4. Construir el DataFrame con los datos reales
+        estudiantes_data = []
+        # Los datos de estudiantes empiezan en names_row_idx + 1
+        for i in range(names_row_idx + 1, len(df)):
+            nombre_estudiante = str(df.iloc[i, names_col_idx]).strip()
+            # Si el nombre es muy corto o vacío, saltar (fin de lista)
+            if not nombre_estudiante or len(nombre_estudiante) < 4 or 'PROFESOR' in nombre_estudiante.upper():
+                continue
             
-            # Buscar coincidencias parciales
-            for key, value in mapeo_materias.items():
-                if key in materia:
-                    materia = value
-                    break
+            row_dict = {'ESTUDIANTE': nombre_estudiante}
+            for col_idx, materia_name in col_to_materia.items():
+                val = df.iloc[i, col_idx]
+                
+                # Aplicar mapeo cualitativo para Cívica y Animación
+                if materia_name in ['CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA', 'ANIMACIÓN A LA LECTURA']:
+                    val = mapear_calificacion_cualitativa(val)
+                
+                row_dict[materia_name] = val
             
-            # Si la materia está en nuestra lista de materias ordenadas, la añadimos
-            if materia in MATERIAS_ORDENADAS:
-                materias_encontradas[col] = materia
-                columnas_necesarias.append(col)
+            estudiantes_data.append(row_dict)
         
-        # Filtrar el dataframe
-        df_filtrado = df[columnas_necesarias].copy()
+        df_ordenado = pd.DataFrame(estudiantes_data)
         
-        # Renombrar columnas de materias
-        rename_cols = {col_estudiante: 'ESTUDIANTE'}
-        for col, materia in materias_encontradas.items():
-            rename_cols[col] = materia
-        
-        df_filtrado = df_filtrado.rename(columns=rename_cols)
-        
-        # Eliminar filas vacías o con nombres muy cortos
-        df_filtrado = df_filtrado[df_filtrado['ESTUDIANTE'].notna()]
-        df_filtrado = df_filtrado[df_filtrado['ESTUDIANTE'].astype(str).str.strip().str.len() > 3]
-        
-        if df_filtrado.empty:
-            print("No se encontraron datos de estudiantes después de la limpieza.")
+        if df_ordenado.empty:
+            print("No se encontraron datos de estudiantes.")
             return {}
-        
-        # Ordenar las columnas según el orden especificado
-        columnas_ordenadas = ['ESTUDIANTE'] + [m for m in MATERIAS_ORDENADAS if m in df_filtrado.columns]
-        df_ordenado = df_filtrado[columnas_ordenadas].copy()
         
         # Asegurarse de que todas las materias estén en el DataFrame
         for materia in MATERIAS_ORDENADAS:
             if materia not in df_ordenado.columns:
                 df_ordenado.loc[:, materia] = None
+                
+        # Ordenar las columnas según el orden especificado
+        columnas_ordenadas = ['ESTUDIANTE'] + [m for m in MATERIAS_ORDENADAS if m in df_ordenado.columns]
+        df_ordenado = df_ordenado[columnas_ordenadas].copy()
         
         # Aplicar las reglas especiales
         for i, row in df_ordenado.iterrows():
-            # 1. Para CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA, establecer valor por defecto
-            if 'CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA' in df_ordenado.columns:
-                if pd.isna(row['CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA']) or row['CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA'] == '':
-                    df_ordenado.at[i, 'CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA'] = 'FRECUENTEMENTE'
-            
-            # 2. Para ANIMACIÓN A LA LECTURA, copiar el valor de LENGUA Y LITERATURA si está vacío
+            # Para ANIMACIÓN A LA LECTURA, copiar el valor exacto de LENGUA Y LITERATURA
             if 'ANIMACIÓN A LA LECTURA' in df_ordenado.columns and 'LENGUA Y LITERATURA' in df_ordenado.columns:
-                if (pd.isna(row['ANIMACIÓN A LA LECTURA']) or row['ANIMACIÓN A LA LECTURA'] == '') and pd.notna(row['LENGUA Y LITERATURA']):
-                    df_ordenado.at[i, 'ANIMACIÓN A LA LECTURA'] = row['LENGUA Y LITERATURA']
+                lengua = row['LENGUA Y LITERATURA']
+                if pd.notna(lengua) and lengua != '':
+                    df_ordenado.at[i, 'ANIMACIÓN A LA LECTURA'] = lengua
         
         # Debug: mostrar un resumen del DataFrame resultante
         print("\n=== RESUMEN DEL DATAFRAME DE NOTAS (df_ordenado) ===")
@@ -217,7 +232,7 @@ def crear_mapa_calificaciones(ruta_archivo: str) -> dict:
         return {}
 
 if __name__ == "__main__":
-    nombre_archivo = 'sb.xlsx'
+    nombre_archivo = 'sb2.xlsx'
     print(f"Iniciando procesamiento de archivo: {nombre_archivo}")
     
     # Llamar a la función para crear el mapa de calificaciones

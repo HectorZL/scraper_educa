@@ -12,7 +12,8 @@ from nombres_estudiantes import (
     trimestres,
     trimestres_borrar,
     trimestres_excepciones,
-    lista_estudiantes_notas
+    lista_estudiantes_notas,
+    exclusiones_civica
 )
 from hola import crear_mapa_calificaciones  # Importar la función de mapeo de calificaciones
 import pandas as pd
@@ -845,34 +846,60 @@ def procesar_todos_los_estudiantes(page, ambito, trimestre_num, grado_selecciona
         materia_nombre=materia_nombre
     )
 
-def procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personalizadas=False):
+def procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personalizadas=False, mapeo_calificaciones=None):
     """Procesa la materia de Cívica.
     
-    Si usar_notas_personalizadas es True, se usa personalized_grades para decidir
-    qué valor seleccionar en los dropdowns por estudiante:
-      - A-  => SIEMPRE
-      - B+, B- => FRECUENTEMENTE
-      - cualquier otra nota => SIEMPRE (comportamiento por defecto)
+    Si se usa mapeo_calificaciones, prioriza las notas del Excel.
+    Si usar_notas_personalizadas es True (como fallback o modo especial):
+      - A, A-, A+  => SIEMPRE
+      - B, B+, B- => FRECUENTEMENTE
+      - cualquier otra nota => OCASIONALMENTE
     """
     def _obtener_etiqueta_civica(nombre_estudiante, trimestre_num):
-        if not usar_notas_personalizadas:
+        nota = None
+        # 1. Intentar obtener del Excel
+        if mapeo_calificaciones:
+            nombre_normalizado = normalize_text(nombre_estudiante)
+            for nombre_archivo, califs in mapeo_calificaciones.items():
+                if normalize_text(nombre_archivo) == nombre_normalizado:
+                    nota = califs.get('CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA')
+                    break
+            if not nota:
+                for nombre_archivo, califs in mapeo_calificaciones.items():
+                    if nombre_normalizado in normalize_text(nombre_archivo) or normalize_text(nombre_archivo) in nombre_normalizado:
+                        nota = califs.get('CÍVICA Y ACOMPAÑAMIENTO INTEGRAL EN EL AULA')
+                        break
+
+        # 2. Si no hay nota en el Excel y se usa modo personalizado, buscar en personalized_grades
+        if not nota and usar_notas_personalizadas:
+            nota_pers, _ = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
+            if nota_pers and nota_pers != "NE":
+                nota = nota_pers
+
+        if not nota:
+            print("    - No hay nota disponible para Cívica, usando 'SIEMPRE' (por defecto).")
             return "SIEMPRE"
 
-        nota, clave = _buscar_calificacion_personalizada(nombre_estudiante, trimestre_num)
-        if not nota or nota == "NE":
-            print("    - No hay nota personalizada para Cívica, usando 'SIEMPRE'.")
-            return "SIEMPRE"
+        print(f"    - Nota obtenida para Cívica: {nota}")
 
-        print(f"    - Nota personalizada para Cívica ({clave}): {nota}")
+        nota_str = str(nota).strip().upper()
+        if nota_str == 'NE':
+            return 'NE'
 
-        # La nota puede ser un string "A-", "B+", etc.
-        if nota == "A-":
+        # Si la nota ya es "SIEMPRE", "FRECUENTEMENTE", etc. (por si acaso viene directa)
+        if "SIEMPRE" in nota_str: return "SIEMPRE"
+        if "FRECUENT" in nota_str: return "FRECUENTEMENTE"
+        if "OCASIONAL" in nota_str: return "OCASIONALMENTE"
+        if "NUNCA" in nota_str: return "NUNCA"
+
+        # Mapeo de letras
+        if nota_str.startswith("A"):
             return "SIEMPRE"
-        if nota in ("B+", "B-"):
+        if nota_str.startswith("B"):
             return "FRECUENTEMENTE"
-
-        # Cualquier otra nota cae al modo por defecto
-        return "SIEMPRE"
+            
+        # Todo lo demás -> OCASIONALMENTE
+        return "OCASIONALMENTE"
 
     def procesar_pagina_actual(trimestre_num):
         # Obtener todas las filas de estudiantes
@@ -902,7 +929,14 @@ def procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personal
                     
                 nombre_estudiante = nombre_element.inner_text().strip()
                 print(f"\n--- Procesando estudiante {idx}/{len(rows)}: {nombre_estudiante} ---")
-                
+
+                # Verificar si el estudiante está en la lista de exclusiones
+                nombre_norm = normalize_text(nombre_estudiante)
+                if any(normalize_text(excluido) in nombre_norm or nombre_norm in normalize_text(excluido)
+                       for excluido in exclusiones_civica):
+                    print(f"  - '{nombre_estudiante}' está en exclusiones_civica. Saltando...")
+                    continue
+
                 # Volver a obtener el botón para este estudiante específico
                 select_button = row.query_selector('button.btn-warning')
                 if not select_button:
@@ -1211,18 +1245,36 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
         materias_civica = [m for m in materias if any(term in m['nombre'].lower() for term in ['civica', 'cívica', 'civico', 'cívico'])]
         materias_restantes = [m for m in materias if m not in materias_civica]
 
+        # === CARGAR EXCEL GLOBALMENTE SI APLICA ===
+        mapeo_calificaciones_global = None
+        es_grado_nuevo = any(str(g) in str(grado_seleccionado) for g in range(2, 8))
+        
+        # Preguntamos por el Excel ANTES de procesar nada si es un grado de 2do a 7mo
+        if es_grado_nuevo:
+            nombre_archivo = input("\nIngrese el nombre del archivo de Excel a procesar [Default: sb.xlsx]: ").strip()
+            if not nombre_archivo:
+                nombre_archivo = 'sb.xlsx'
+            mapeo_calificaciones_global = crear_mapa_calificaciones(nombre_archivo)
+            print("\nGrado con mapeo de Excel (2do-7mo): se ha cargado el archivo para todas las materias.")
+
         # === BLOQUE ESPECIAL PARA CÍVICA ===
         if materias_civica:
             print("\n=== DETECTADA MATERIA DE CÍVICA ===")
             print("Se procesará automáticamente la materia de Cívica.")
 
             # Elegir modo de Cívica
-            modo_civica = input("\nModo de Cívica: ingrese 'd' para modo por defecto (todo SIEMPRE) o 'p' para usar notas personalizadas (A-/B+/B-). [d/p]: ").strip().lower()
+            modo_civica = input("\nModo de Cívica: ingrese 'd' para defecto, 'p' para personalizado o 'e' para usar notas del excel. [d/p/e]: ").strip().lower()
+            
+            # Usar notas personalizadas_civica se activa si es 'p' (personalized_grades) o 'e' (usa el mapeo_calificaciones_global)
+            # En realidad, si es 'e', procesar_civica ya prioriza el mapeo_calificaciones_global.
             usar_notas_personalizadas_civica = (modo_civica == 'p')
-            if usar_notas_personalizadas_civica:
-                print("\nCívica se procesará en modo BASADO EN NOTAS PERSONALIZADAS (A- => SIEMPRE, B+/B- => FRECUENTEMENTE).")
+            
+            if modo_civica == 'e':
+                print("\nCívica se procesará usando las NOTAS DEL EXCEL.")
+            elif usar_notas_personalizadas_civica:
+                print("\nCívica se procesará en modo PERSONALIZADO (A-, B+, B- de nombres_estudiantes.py).")
             else:
-                print("\nCívica se procesará en modo POR DEFECTO (todos los indicadores en SIEMPRE).")
+                print("\nCívica se procesará en modo DEFECTO (todos los indicadores en SIEMPRE).")
 
             for materia in materias_civica:
                 print(f"\n=== PROCESANDO MATERIA: {materia['nombre'].upper()} ===")
@@ -1238,7 +1290,13 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
 
                 for trimestre_num in trimestres_civica:
                     print(f"\n=== Procesando Cívica - Trimestre {trimestre_num} ===")
-                    procesar_civica(page, trimestre_num, grado_seleccionado, usar_notas_personalizadas=usar_notas_personalizadas_civica)
+                    procesar_civica(
+                        page,
+                        trimestre_num,
+                        grado_seleccionado,
+                        usar_notas_personalizadas=usar_notas_personalizadas_civica,
+                        mapeo_calificaciones=mapeo_calificaciones_global
+                    )
 
             # Eliminar Cívica de la lista de materias a procesar con el flujo normal
             materias = materias_restantes
@@ -1271,16 +1329,8 @@ def obtener_ambito_y_scrapear(page, grado_seleccionado, jornada):
             trimestres_input = input("Ingrese los números de trimestres separados por comas (1-3), ejemplo '1,2': ")
             trimestres_materia = [int(t.strip()) for t in trimestres_input.split(',')]
 
-            # Cargar el mapeo de calificaciones si es necesario
-            mapeo_calificaciones = None
-            # Verificar si es un grado que usa Excel (nueva interfaz 2do-7mo)
-            es_grado_nuevo = any(str(g) in str(grado_seleccionado) for g in range(2, 8))
-
-            if accion == 'llenar' and es_grado_nuevo:
-                nombre_archivo = input("Ingrese el nombre del archivo de Excel a procesar [Default: sb.xlsx]: ").strip()
-                if not nombre_archivo:
-                    nombre_archivo = 'sb.xlsx'
-                mapeo_calificaciones = crear_mapa_calificaciones(nombre_archivo)
+            # Usar el mapeo de calificaciones global previamente cargado
+            mapeo_calificaciones = mapeo_calificaciones_global
 
             # Para grados 2do en adelante (nueva interfaz con Excel), usar siempre todos los estudiantes
             # y las notas del archivo, sin preguntar grupo

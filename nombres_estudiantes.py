@@ -85,3 +85,13 @@ lista_estudiantes_notas = {
     "VELIZ ZAMBRANO ALEXANDER RICARDO": "A+",
     "ZAMBRANO ZAMBRANO MARIA JOSE": "A+"
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EXCLUSIONES PARA CÍVICA
+# Agrega aquí los nombres de los estudiantes que NO deben procesarse en Cívica.
+# El código los saltará automáticamente en CUALQUIER trimestre.
+# Los nombres no necesitan tildes ni mayúsculas exactas; se normalizan.
+# ─────────────────────────────────────────────────────────────────────────────
+exclusiones_civica = [
+    "SANCHEZ ZAMBRANO VICTOR JOSIAS",  # ejemplo - descomenta y edita
+]
