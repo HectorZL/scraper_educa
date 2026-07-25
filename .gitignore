@@ -1,8 +1,13 @@
 # No ignorar el archivo "credenciales_example.data"
 !credenciales_example.data
 
-# Ignorar archivo específico "credenciales.data"
+# Ignorar archivos con credenciales locales
 credenciales.data
+c-d-o.data
+
+# Ignorar archivos locales con nombres y calificaciones de estudiantes
+notas_orozco.xlsx
+notas_lengua.xlsx
 
 # Ignorar __pycache__ directorio
 __pycache__/
